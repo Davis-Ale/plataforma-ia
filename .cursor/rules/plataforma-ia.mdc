@@ -1,0 +1,37 @@
+---
+description: Plataforma IA project rules
+alwaysApply: true
+---
+
+# Plataforma IA - Cursor Rules
+
+Read and follow CLAUDE.md before making any implementation decision.
+
+Mandatory rules:
+- Follow CLAUDE.md as the source of truth.
+- Do not invent modules, screens, flows, business rules, libraries, or infrastructure.
+- If something is not defined, ask Davis before implementing.
+- Use Node.js 24, TypeScript, pnpm workspaces, NestJS, Prisma, PostgreSQL, Redis, BullMQ, Bull Board, Next.js 14, TailwindCSS, Docker and Docker Compose.
+- Never use npm.
+- Never use yarn.
+- Never use Python.
+- Never push.
+- Never commit unless Davis explicitly asks.
+- Never create frontend screens before backend endpoints.
+- Never create dashboard before the first real end-to-end flow.
+- Never let AI access external systems directly.
+- Never let AI execute business logic directly.
+- Never rewrite ERP, payroll, or tax engines.
+- Never create a domain table without company_id.
+- Never put a specific external system name inside core code.
+- All external calls must go through BullMQ queues.
+- Payroll integrations are always read only.
+- Start with Phase 0 Foundation.
+- Test before saying a block is ready.
+
+Workflow with Davis:
+- Explain what will be done in one short line before changing files.
+- After creating or editing a file, show it with cat and open it in Cursor.
+- Use: cat path/to/file && cursor path/to/file
+- Wait for Davis approval/output before moving to the next step.
+- Use accelerated blocks only when Davis explicitly asks, but still validate results.

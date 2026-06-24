@@ -1,0 +1,20 @@
+// ===========================================
+// PRISMA SCHEMA - PLATAFORMA IA
+// Phase 0: foundation database connectivity
+// ===========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FoundationCheck {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  @@map("_foundation_checks")
+}
