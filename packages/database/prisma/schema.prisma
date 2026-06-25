@@ -1,6 +1,6 @@
 // ===========================================
 // PRISMA SCHEMA - PLATAFORMA IA
-// Phase 0: foundation database connectivity
+// Base multi-tenant foundation
 // ===========================================
 
 generator client {
@@ -10,6 +10,76 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum CompanyUserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum CompanyUserStatus {
+  ACTIVE
+  INVITED
+  INACTIVE
+}
+
+model Company {
+  id        String        @id @default(uuid())
+  name      String
+  legalName String?
+  document  String?       @unique
+  status    CompanyStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  users     CompanyUser[]
+
+  @@map("companies")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String?
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  companies    CompanyUser[]
+
+  @@map("users")
+}
+
+model CompanyUser {
+  id        String            @id @default(uuid())
+  companyId String
+  userId    String
+  role      CompanyUserRole   @default(MEMBER)
+  status    CompanyUserStatus @default(ACTIVE)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([companyId])
+  @@index([userId])
+  @@map("company_users")
 }
 
 model FoundationCheck {
