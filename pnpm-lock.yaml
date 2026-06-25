@@ -106,6 +106,19 @@ importers:
         specifier: ^5.5.0
         version: 5.9.3
 
+  packages/auth:
+    dependencies:
+      '@nestjs/common':
+        specifier: ^10.3.0
+        version: 10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.2
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
   packages/database:
     dependencies:
       '@nestjs/common':
