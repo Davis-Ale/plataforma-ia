@@ -1,17 +1,22 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { CustomerStatus, Prisma } from "@prisma/client";
+import { AuditAction, CustomerStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "@plataforma/database";
+import { AuditService } from "../audit/audit.service";
 import { AuthenticatedCompany } from "../auth/types/authenticated-company";
+import { AuthenticatedUser } from "../auth/types/authenticated-user";
 import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { FindCustomersQueryDto } from "./dto/find-customers-query.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
-  async create(company: AuthenticatedCompany, data: CreateCustomerDto) {
-    return this.prisma.customer.create({
+  async create(company: AuthenticatedCompany, user: AuthenticatedUser, data: CreateCustomerDto) {
+    const customer = await this.prisma.customer.create({
       data: {
         companyId: company.companyId,
         name: data.name,
@@ -20,6 +25,19 @@ export class CustomersService {
         document: data.document,
       },
     });
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.CREATE,
+      resource: "customer",
+      resourceId: customer.id,
+      metadata: {
+        name: customer.name,
+      },
+    });
+
+    return customer;
   }
 
   async findAll(company: AuthenticatedCompany, query: FindCustomersQueryDto) {
@@ -84,7 +102,7 @@ export class CustomersService {
     return customer;
   }
 
-  async update(company: AuthenticatedCompany, id: string, data: UpdateCustomerDto) {
+  async update(company: AuthenticatedCompany, user: AuthenticatedUser, id: string, data: UpdateCustomerDto) {
     const result = await this.prisma.customer.updateMany({
       where: {
         id,
@@ -103,10 +121,23 @@ export class CustomersService {
       throw new NotFoundException("Customer not found");
     }
 
-    return this.findOne(company, id);
+    const customer = await this.findOne(company, id);
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.UPDATE,
+      resource: "customer",
+      resourceId: customer.id,
+      metadata: {
+        changedFields: Object.keys(data).filter((key) => data[key as keyof UpdateCustomerDto] !== undefined),
+      },
+    });
+
+    return customer;
   }
 
-  async archive(company: AuthenticatedCompany, id: string) {
+  async archive(company: AuthenticatedCompany, user: AuthenticatedUser, id: string) {
     const result = await this.prisma.customer.updateMany({
       where: {
         id,
@@ -121,7 +152,20 @@ export class CustomersService {
       throw new NotFoundException("Customer not found");
     }
 
-    return this.findOne(company, id);
+    const customer = await this.findOne(company, id);
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.ARCHIVE,
+      resource: "customer",
+      resourceId: customer.id,
+      metadata: {
+        name: customer.name,
+      },
+    });
+
+    return customer;
   }
 
   private toPositiveNumber(value: string | undefined, fallback: number) {
