@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentCompany } from "../auth/decorators/current-company.decorator";
 import { CompanyContextGuard } from "../auth/guards/company-context.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -44,5 +44,13 @@ export class CustomersController {
     @Body() data: UpdateCustomerDto,
   ) {
     return this.customersService.update(company, id, data);
+  }
+
+  @Delete(":id")
+  async archive(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("id") id: string,
+  ) {
+    return this.customersService.archive(company, id);
   }
 }

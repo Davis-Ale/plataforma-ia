@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { CustomerStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "@plataforma/database";
 import { AuthenticatedCompany } from "../auth/types/authenticated-company";
 import { CreateCustomerDto } from "./dto/create-customer.dto";
@@ -30,6 +30,9 @@ export class CustomersService {
 
     const where: Prisma.CustomerWhereInput = {
       companyId: company.companyId,
+      status: {
+        not: CustomerStatus.ARCHIVED,
+      },
     };
 
     if (query.search !== undefined && query.search.trim() !== "") {
@@ -92,6 +95,17 @@ export class CustomersService {
         phone: data.phone,
         document: data.document,
         status: data.status,
+      },
+    });
+  }
+
+  async archive(company: AuthenticatedCompany, id: string) {
+    await this.findOne(company, id);
+
+    return this.prisma.customer.update({
+      where: { id },
+      data: {
+        status: CustomerStatus.ARCHIVED,
       },
     });
   }
