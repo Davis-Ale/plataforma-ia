@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
 import { PasswordService } from "@plataforma/auth";
 import { PrismaService } from "@plataforma/database";
 import { LoginDto } from "./dto/login.dto";
@@ -8,6 +9,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async login(data: LoginDto) {
@@ -46,7 +48,13 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     }
 
+    const accessToken = await this.jwtService.signAsync({
+      sub: user.id,
+      email: user.email,
+    });
+
     return {
+      accessToken,
       user: {
         id: user.id,
         name: user.name,
