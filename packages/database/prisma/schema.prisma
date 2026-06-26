@@ -36,6 +36,12 @@ enum CompanyUserStatus {
   INACTIVE
 }
 
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -46,6 +52,7 @@ model Company {
   updatedAt DateTime      @updatedAt
 
   users     CompanyUser[]
+  customers Customer[]
 
   @@map("companies")
 }
@@ -80,6 +87,24 @@ model CompanyUser {
   @@index([companyId])
   @@index([userId])
   @@map("company_users")
+}
+
+model Customer {
+  id        String         @id @default(uuid())
+  companyId String         @map("company_id")
+  name      String
+  email     String?
+  phone     String?
+  document  String?
+  status    CustomerStatus @default(ACTIVE)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, document])
+  @@index([companyId])
+  @@map("customers")
 }
 
 model FoundationCheck {
