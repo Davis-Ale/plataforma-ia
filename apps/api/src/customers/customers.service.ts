@@ -85,10 +85,11 @@ export class CustomersService {
   }
 
   async update(company: AuthenticatedCompany, id: string, data: UpdateCustomerDto) {
-    await this.findOne(company, id);
-
-    return this.prisma.customer.update({
-      where: { id },
+    const result = await this.prisma.customer.updateMany({
+      where: {
+        id,
+        companyId: company.companyId,
+      },
       data: {
         name: data.name,
         email: data.email,
@@ -97,17 +98,30 @@ export class CustomersService {
         status: data.status,
       },
     });
+
+    if (result.count === 0) {
+      throw new NotFoundException("Customer not found");
+    }
+
+    return this.findOne(company, id);
   }
 
   async archive(company: AuthenticatedCompany, id: string) {
-    await this.findOne(company, id);
-
-    return this.prisma.customer.update({
-      where: { id },
+    const result = await this.prisma.customer.updateMany({
+      where: {
+        id,
+        companyId: company.companyId,
+      },
       data: {
         status: CustomerStatus.ARCHIVED,
       },
     });
+
+    if (result.count === 0) {
+      throw new NotFoundException("Customer not found");
+    }
+
+    return this.findOne(company, id);
   }
 
   private toPositiveNumber(value: string | undefined, fallback: number) {
