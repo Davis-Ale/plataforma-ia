@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentCompany } from "../auth/decorators/current-company.decorator";
 import { CompanyContextGuard } from "../auth/guards/company-context.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { AuthenticatedCompany } from "../auth/types/authenticated-company";
 import { CustomersService } from "./customers.service";
 import { CreateCustomerDto } from "./dto/create-customer.dto";
+import { FindCustomersQueryDto } from "./dto/find-customers-query.dto";
 
 @Controller("customers")
 @UseGuards(JwtAuthGuard, CompanyContextGuard)
@@ -20,7 +21,10 @@ export class CustomersController {
   }
 
   @Get()
-  async findAll(@CurrentCompany() company: AuthenticatedCompany) {
-    return this.customersService.findAll(company);
+  async findAll(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Query() query: FindCustomersQueryDto,
+  ) {
+    return this.customersService.findAll(company, query);
   }
 }
