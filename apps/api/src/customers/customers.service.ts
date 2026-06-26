@@ -1,9 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@plataforma/database";
 import { AuthenticatedCompany } from "../auth/types/authenticated-company";
 import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { FindCustomersQueryDto } from "./dto/find-customers-query.dto";
+import { UpdateCustomerDto } from "./dto/update-customer.dto";
 
 @Injectable()
 export class CustomersService {
@@ -63,6 +64,36 @@ export class CustomersService {
         totalPages: Math.ceil(total / safeLimit),
       },
     };
+  }
+
+  async findOne(company: AuthenticatedCompany, id: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: {
+        id,
+        companyId: company.companyId,
+      },
+    });
+
+    if (customer === null) {
+      throw new NotFoundException("Customer not found");
+    }
+
+    return customer;
+  }
+
+  async update(company: AuthenticatedCompany, id: string, data: UpdateCustomerDto) {
+    await this.findOne(company, id);
+
+    return this.prisma.customer.update({
+      where: { id },
+      data: {
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        document: data.document,
+        status: data.status,
+      },
+    });
   }
 
   private toPositiveNumber(value: string | undefined, fallback: number) {
