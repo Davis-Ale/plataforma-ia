@@ -90,6 +90,51 @@ export class CustomersService {
     };
   }
 
+  async findArchived(company: AuthenticatedCompany, query: FindCustomersQueryDto) {
+    const page = this.toPositiveNumber(query.page, 1);
+    const limit = this.toPositiveNumber(query.limit, 20);
+    const safeLimit = Math.min(limit, 100);
+    const skip = (page - 1) * safeLimit;
+
+    const where: Prisma.CustomerWhereInput = {
+      companyId: company.companyId,
+      status: CustomerStatus.ARCHIVED,
+    };
+
+    if (query.search !== undefined && query.search.trim() !== "") {
+      const search = query.search.trim();
+
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search, mode: "insensitive" } },
+        { document: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.customer.findMany({
+        where,
+        orderBy: {
+          updatedAt: "desc",
+        },
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.customer.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        page,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+    };
+  }
+
   async findOne(company: AuthenticatedCompany, id: string) {
     const customer = await this.prisma.customer.findFirst({
       where: {
