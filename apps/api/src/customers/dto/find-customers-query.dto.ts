@@ -1,15 +1,20 @@
-import { IsOptional, IsString } from "class-validator";
+import { IsEnum, IsOptional, IsString } from "class-validator";
+import { CustomerStatus } from "@prisma/client";
 
 export class FindCustomersQueryDto {
   @IsOptional()
   @IsString()
-  declare search?: string;
+  search?: string;
 
   @IsOptional()
   @IsString()
-  declare page?: string;
+  page?: string;
 
   @IsOptional()
   @IsString()
-  declare limit?: string;
+  limit?: string;
+
+  @IsOptional()
+  @IsEnum(CustomerStatus)
+  status?: CustomerStatus;
 }

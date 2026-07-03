@@ -48,9 +48,12 @@ export class CustomersService {
 
     const where: Prisma.CustomerWhereInput = {
       companyId: company.companyId,
-      status: {
-        not: CustomerStatus.ARCHIVED,
-      },
+      status:
+        query.status !== undefined && query.status !== CustomerStatus.ARCHIVED
+          ? query.status
+          : {
+              not: CustomerStatus.ARCHIVED,
+            },
     };
 
     if (query.search !== undefined && query.search.trim() !== "") {
