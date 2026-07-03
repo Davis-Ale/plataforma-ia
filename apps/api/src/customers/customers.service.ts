@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditAction, CustomerStatus, Prisma } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { PrismaService } from "@plataforma/database";
 import { AuditService } from "../audit/audit.service";
 import { AuthenticatedCompany } from "../auth/types/authenticated-company";
@@ -16,15 +17,7 @@ export class CustomersService {
   ) {}
 
   async create(company: AuthenticatedCompany, user: AuthenticatedUser, data: CreateCustomerDto) {
-    const customer = await this.prisma.customer.create({
-      data: {
-        companyId: company.companyId,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        document: data.document,
-      },
-    });
+    const customer = await this.createCustomerOrThrow(company, data);
 
     await this.auditService.create({
       companyId: company.companyId,
@@ -201,22 +194,7 @@ export class CustomersService {
       throw new BadRequestException("Use the archive endpoint to archive customers");
     }
 
-    const result = await this.prisma.customer.updateMany({
-      where: {
-        id,
-        companyId: company.companyId,
-        status: {
-          not: CustomerStatus.ARCHIVED,
-        },
-      },
-      data: {
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        document: data.document,
-        status: data.status,
-      },
-    });
+    const result = await this.updateCustomerOrThrow(company, id, data);
 
     if (result.count === 0) {
       throw new NotFoundException("Customer not found");
@@ -303,6 +281,53 @@ export class CustomersService {
     });
 
     return customer;
+  }
+
+  private async createCustomerOrThrow(company: AuthenticatedCompany, data: CreateCustomerDto) {
+    try {
+      return await this.prisma.customer.create({
+        data: {
+          companyId: company.companyId,
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          document: data.document,
+        },
+      });
+    } catch (error) {
+      this.handleCustomerDatabaseError(error);
+    }
+  }
+
+  private async updateCustomerOrThrow(company: AuthenticatedCompany, id: string, data: UpdateCustomerDto) {
+    try {
+      return await this.prisma.customer.updateMany({
+        where: {
+          id,
+          companyId: company.companyId,
+          status: {
+            not: CustomerStatus.ARCHIVED,
+          },
+        },
+        data: {
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          document: data.document,
+          status: data.status,
+        },
+      });
+    } catch (error) {
+      this.handleCustomerDatabaseError(error);
+    }
+  }
+
+  private handleCustomerDatabaseError(error: unknown): never {
+    if (error instanceof PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new BadRequestException("Customer document already exists");
+    }
+
+    throw error;
   }
 
   private toPositiveNumber(value: string | undefined, fallback: number) {
