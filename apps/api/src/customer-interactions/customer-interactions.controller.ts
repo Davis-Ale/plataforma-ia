@@ -1,0 +1,35 @@
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { CurrentCompany } from "../auth/decorators/current-company.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { CompanyContextGuard } from "../auth/guards/company-context.guard";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { AuthenticatedCompany } from "../auth/types/authenticated-company";
+import { AuthenticatedUser } from "../auth/types/authenticated-user";
+import { CustomerInteractionsService } from "./customer-interactions.service";
+import { CreateCustomerInteractionDto } from "./dto/create-customer-interaction.dto";
+import { FindCustomerInteractionsQueryDto } from "./dto/find-customer-interactions-query.dto";
+
+@Controller("customers/:customerId/interactions")
+@UseGuards(JwtAuthGuard, CompanyContextGuard)
+export class CustomerInteractionsController {
+  constructor(private readonly customerInteractionsService: CustomerInteractionsService) {}
+
+  @Post()
+  async create(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("customerId") customerId: string,
+    @Body() data: CreateCustomerInteractionDto,
+  ) {
+    return this.customerInteractionsService.create(company, user, customerId, data);
+  }
+
+  @Get()
+  async findAll(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("customerId") customerId: string,
+    @Query() query: FindCustomerInteractionsQueryDto,
+  ) {
+    return this.customerInteractionsService.findAll(company, customerId, query);
+  }
+}
