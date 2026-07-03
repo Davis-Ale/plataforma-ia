@@ -32,6 +32,15 @@ export class CustomersController {
     return this.customersService.findAll(company, query);
   }
 
+  @Get(":id/audit-logs")
+  async findAuditLogs(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("id") id: string,
+    @Query() query: FindCustomersQueryDto,
+  ) {
+    return this.customersService.findAuditLogs(company, id, query);
+  }
+
   @Get(":id")
   async findOne(
     @CurrentCompany() company: AuthenticatedCompany,

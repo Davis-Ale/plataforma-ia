@@ -102,6 +102,52 @@ export class CustomersService {
     return customer;
   }
 
+  async findAuditLogs(company: AuthenticatedCompany, id: string, query: FindCustomersQueryDto) {
+    await this.findOne(company, id);
+
+    const page = this.toPositiveNumber(query.page, 1);
+    const limit = this.toPositiveNumber(query.limit, 20);
+    const safeLimit = Math.min(limit, 100);
+    const skip = (page - 1) * safeLimit;
+
+    const where: Prisma.AuditLogWhereInput = {
+      companyId: company.companyId,
+      resource: "customer",
+      resourceId: id,
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        page,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+    };
+  }
+
   async update(company: AuthenticatedCompany, user: AuthenticatedUser, id: string, data: UpdateCustomerDto) {
     const result = await this.prisma.customer.updateMany({
       where: {
