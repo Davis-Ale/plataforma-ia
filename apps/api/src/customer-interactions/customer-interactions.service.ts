@@ -6,6 +6,7 @@ import { AuthenticatedCompany } from "../auth/types/authenticated-company";
 import { AuthenticatedUser } from "../auth/types/authenticated-user";
 import { CreateCustomerInteractionDto } from "./dto/create-customer-interaction.dto";
 import { FindCustomerInteractionsQueryDto } from "./dto/find-customer-interactions-query.dto";
+import { UpdateCustomerInteractionDto } from "./dto/update-customer-interaction.dto";
 
 @Injectable()
 export class CustomerInteractionsService {
@@ -52,6 +53,50 @@ export class CustomerInteractionsService {
       metadata: {
         customerId,
         type: interaction.type,
+      },
+    });
+
+    return interaction;
+  }
+
+  async update(
+    company: AuthenticatedCompany,
+    user: AuthenticatedUser,
+    customerId: string,
+    id: string,
+    data: UpdateCustomerInteractionDto,
+  ) {
+    await this.ensureCustomerBelongsToCompany(company, customerId);
+
+    const result = await this.prisma.customerInteraction.updateMany({
+      where: {
+        id,
+        companyId: company.companyId,
+        customerId,
+      },
+      data: {
+        type: data.type,
+        content: data.content,
+        scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : undefined,
+        completedAt: data.completedAt ? new Date(data.completedAt) : undefined,
+      },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException("Customer interaction not found");
+    }
+
+    const interaction = await this.findOne(company, customerId, id);
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.UPDATE,
+      resource: "customer_interaction",
+      resourceId: interaction.id,
+      metadata: {
+        customerId,
+        changedFields: Object.keys(data).filter((key) => data[key as keyof UpdateCustomerInteractionDto] !== undefined),
       },
     });
 

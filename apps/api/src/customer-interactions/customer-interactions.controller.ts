@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentCompany } from "../auth/decorators/current-company.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { CompanyContextGuard } from "../auth/guards/company-context.guard";
@@ -8,6 +8,7 @@ import { AuthenticatedUser } from "../auth/types/authenticated-user";
 import { CustomerInteractionsService } from "./customer-interactions.service";
 import { CreateCustomerInteractionDto } from "./dto/create-customer-interaction.dto";
 import { FindCustomerInteractionsQueryDto } from "./dto/find-customer-interactions-query.dto";
+import { UpdateCustomerInteractionDto } from "./dto/update-customer-interaction.dto";
 
 @Controller("customers/:customerId/interactions")
 @UseGuards(JwtAuthGuard, CompanyContextGuard)
@@ -22,6 +23,17 @@ export class CustomerInteractionsController {
     @Body() data: CreateCustomerInteractionDto,
   ) {
     return this.customerInteractionsService.create(company, user, customerId, data);
+  }
+
+  @Patch(":id")
+  async update(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("customerId") customerId: string,
+    @Param("id") id: string,
+    @Body() data: UpdateCustomerInteractionDto,
+  ) {
+    return this.customerInteractionsService.update(company, user, customerId, id, data);
   }
 
   @Get(":id")
