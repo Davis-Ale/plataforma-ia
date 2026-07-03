@@ -238,6 +238,39 @@ export class CustomersService {
     return customer;
   }
 
+  async restore(company: AuthenticatedCompany, user: AuthenticatedUser, id: string) {
+    const result = await this.prisma.customer.updateMany({
+      where: {
+        id,
+        companyId: company.companyId,
+        status: CustomerStatus.ARCHIVED,
+      },
+      data: {
+        status: CustomerStatus.ACTIVE,
+      },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException("Customer not found");
+    }
+
+    const customer = await this.findOne(company, id);
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.UPDATE,
+      resource: "customer",
+      resourceId: customer.id,
+      metadata: {
+        restored: true,
+        name: customer.name,
+      },
+    });
+
+    return customer;
+  }
+
   async archive(company: AuthenticatedCompany, user: AuthenticatedUser, id: string) {
     const result = await this.prisma.customer.updateMany({
       where: {

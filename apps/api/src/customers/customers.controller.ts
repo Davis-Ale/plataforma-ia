@@ -49,6 +49,15 @@ export class CustomersController {
     return this.customersService.findAuditLogs(company, id, query);
   }
 
+  @Post(":id/restore")
+  async restore(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+  ) {
+    return this.customersService.restore(company, user, id);
+  }
+
   @Get(":id")
   async findOne(
     @CurrentCompany() company: AuthenticatedCompany,
