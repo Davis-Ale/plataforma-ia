@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, Query, UseGuards } from "@nestjs/common";
 import { CurrentCompany } from "../auth/decorators/current-company.decorator";
 import { CompanyContextGuard } from "../auth/guards/company-context.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -17,5 +17,13 @@ export class AuditController {
     @Query() query: FindAuditLogsQueryDto,
   ) {
     return this.auditService.findAll(company, query);
+  }
+
+  @Get(":id")
+  async findOne(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("id") id: string,
+  ) {
+    return this.auditService.findOne(company, id);
   }
 }

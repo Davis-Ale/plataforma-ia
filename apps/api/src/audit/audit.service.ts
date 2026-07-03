@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { AuditAction, Prisma } from "@prisma/client";
 import { PrismaService } from "@plataforma/database";
 import { AuthenticatedCompany } from "../auth/types/authenticated-company";
@@ -73,6 +73,30 @@ export class AuditService {
         totalPages: Math.ceil(total / safeLimit),
       },
     };
+  }
+
+  async findOne(company: AuthenticatedCompany, id: string) {
+    const auditLog = await this.prisma.auditLog.findFirst({
+      where: {
+        id,
+        companyId: company.companyId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (auditLog === null) {
+      throw new NotFoundException("Audit log not found");
+    }
+
+    return auditLog;
   }
 
   private toPositiveNumber(value: string | undefined, fallback: number) {
