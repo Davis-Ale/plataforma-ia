@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditAction, CustomerStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "@plataforma/database";
 import { AuditService } from "../audit/audit.service";
@@ -152,6 +152,10 @@ export class CustomersService {
   }
 
   async update(company: AuthenticatedCompany, user: AuthenticatedUser, id: string, data: UpdateCustomerDto) {
+    if (data.status === CustomerStatus.ARCHIVED) {
+      throw new BadRequestException("Use the archive endpoint to archive customers");
+    }
+
     const result = await this.prisma.customer.updateMany({
       where: {
         id,
