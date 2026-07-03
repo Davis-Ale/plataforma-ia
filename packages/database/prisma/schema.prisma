@@ -42,6 +42,15 @@ enum CustomerStatus {
   ARCHIVED
 }
 
+enum CustomerInteractionType {
+  NOTE
+  CALL
+  WHATSAPP
+  EMAIL
+  MEETING
+  FOLLOW_UP
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -62,7 +71,8 @@ model Company {
 
   users     CompanyUser[]
   customers Customer[]
-  auditLogs AuditLog[]
+  auditLogs    AuditLog[]
+  interactions CustomerInteraction[]
 
   @@map("companies")
 }
@@ -78,6 +88,7 @@ model User {
 
   companies    CompanyUser[]
   auditLogs    AuditLog[]
+  interactions CustomerInteraction[]
 
   @@map("users")
 }
@@ -111,11 +122,35 @@ model Customer {
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company      Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  interactions CustomerInteraction[]
 
   @@unique([companyId, document])
   @@index([companyId])
   @@map("customers")
+}
+
+model CustomerInteraction {
+  id          String                  @id @default(uuid())
+  companyId   String                  @map("company_id")
+  customerId  String                  @map("customer_id")
+  userId      String?                 @map("user_id")
+  type        CustomerInteractionType
+  content     String
+  scheduledAt DateTime?               @map("scheduled_at")
+  completedAt DateTime?               @map("completed_at")
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([userId])
+  @@index([type])
+  @@map("customer_interactions")
 }
 
 model AuditLog {
