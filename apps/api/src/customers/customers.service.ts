@@ -153,6 +153,9 @@ export class CustomersService {
       where: {
         id,
         companyId: company.companyId,
+        status: {
+          not: CustomerStatus.ARCHIVED,
+        },
       },
       data: {
         name: data.name,
@@ -188,6 +191,9 @@ export class CustomersService {
       where: {
         id,
         companyId: company.companyId,
+        status: {
+          not: CustomerStatus.ARCHIVED,
+        },
       },
       data: {
         status: CustomerStatus.ARCHIVED,
