@@ -24,6 +24,15 @@ export class CustomerInteractionsController {
     return this.customerInteractionsService.create(company, user, customerId, data);
   }
 
+  @Get(":id")
+  async findOne(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("customerId") customerId: string,
+    @Param("id") id: string,
+  ) {
+    return this.customerInteractionsService.findOne(company, customerId, id);
+  }
+
   @Get()
   async findAll(
     @CurrentCompany() company: AuthenticatedCompany,

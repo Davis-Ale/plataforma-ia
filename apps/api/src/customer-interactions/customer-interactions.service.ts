@@ -58,6 +58,33 @@ export class CustomerInteractionsService {
     return interaction;
   }
 
+  async findOne(company: AuthenticatedCompany, customerId: string, id: string) {
+    await this.ensureCustomerBelongsToCompany(company, customerId);
+
+    const interaction = await this.prisma.customerInteraction.findFirst({
+      where: {
+        id,
+        companyId: company.companyId,
+        customerId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (interaction === null) {
+      throw new NotFoundException("Customer interaction not found");
+    }
+
+    return interaction;
+  }
+
   async findAll(
     company: AuthenticatedCompany,
     customerId: string,
