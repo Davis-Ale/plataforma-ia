@@ -259,6 +259,16 @@ export class CustomerInteractionsService {
       type: query.type,
     };
 
+    if (query.status === "PENDING") {
+      where.completedAt = null;
+    }
+
+    if (query.status === "COMPLETED") {
+      where.completedAt = {
+        not: null,
+      };
+    }
+
     const [items, total] = await Promise.all([
       this.prisma.customerInteraction.findMany({
         where,
