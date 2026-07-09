@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentCompany } from "../auth/decorators/current-company.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { CompanyContextGuard } from "../auth/guards/company-context.guard";
@@ -54,6 +54,16 @@ export class CustomerInteractionsController {
     @Param("id") id: string,
   ) {
     return this.customerInteractionsService.reopen(company, user, customerId, id);
+  }
+
+  @Delete(":id")
+  async remove(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("customerId") customerId: string,
+    @Param("id") id: string,
+  ) {
+    return this.customerInteractionsService.remove(company, user, customerId, id);
   }
 
   @Get(":id")

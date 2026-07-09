@@ -183,6 +183,37 @@ export class CustomerInteractionsService {
     return interaction;
   }
 
+  async remove(
+    company: AuthenticatedCompany,
+    user: AuthenticatedUser,
+    customerId: string,
+    id: string,
+  ) {
+    await this.ensureCustomerBelongsToCompany(company, customerId);
+
+    const interaction = await this.findOne(company, customerId, id);
+
+    await this.prisma.customerInteraction.delete({
+      where: {
+        id: interaction.id,
+      },
+    });
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.DELETE,
+      resource: "customer_interaction",
+      resourceId: interaction.id,
+      metadata: {
+        customerId,
+        type: interaction.type,
+      },
+    });
+
+    return { deleted: true, id: interaction.id };
+  }
+
   async findOne(company: AuthenticatedCompany, customerId: string, id: string) {
     await this.ensureCustomerBelongsToCompany(company, customerId);
 
