@@ -91,6 +91,11 @@ export class CustomerInteractionsController {
 export class CompanyCustomerInteractionsController {
   constructor(private readonly customerInteractionsService: CustomerInteractionsService) {}
 
+  @Get("overdue")
+  async findOverdue(@CurrentCompany() company: AuthenticatedCompany) {
+    return this.customerInteractionsService.findOverdue(company);
+  }
+
   @Get("pending")
   async findPending(@CurrentCompany() company: AuthenticatedCompany) {
     return this.customerInteractionsService.findPending(company);

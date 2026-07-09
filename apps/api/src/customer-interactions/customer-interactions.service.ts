@@ -214,6 +214,39 @@ export class CustomerInteractionsService {
     return { deleted: true, id: interaction.id };
   }
 
+  async findOverdue(company: AuthenticatedCompany) {
+    return this.prisma.customerInteraction.findMany({
+      where: {
+        companyId: company.companyId,
+        completedAt: null,
+        scheduledAt: {
+          lt: new Date(),
+        },
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            status: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        scheduledAt: "asc",
+      },
+    });
+  }
+
   async findPending(company: AuthenticatedCompany) {
     return this.prisma.customerInteraction.findMany({
       where: {
