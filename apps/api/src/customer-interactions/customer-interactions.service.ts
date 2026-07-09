@@ -214,6 +214,46 @@ export class CustomerInteractionsService {
     return { deleted: true, id: interaction.id };
   }
 
+  async findToday(company: AuthenticatedCompany) {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    return this.prisma.customerInteraction.findMany({
+      where: {
+        companyId: company.companyId,
+        completedAt: null,
+        scheduledAt: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            status: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        scheduledAt: "asc",
+      },
+    });
+  }
+
   async findOverdue(company: AuthenticatedCompany) {
     return this.prisma.customerInteraction.findMany({
       where: {
