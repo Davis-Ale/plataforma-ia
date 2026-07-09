@@ -5,6 +5,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthenticatedCompany } from "../auth/types/authenticated-company";
 import { AuthenticatedUser } from "../auth/types/authenticated-user";
 import { CreateCustomerInteractionDto } from "./dto/create-customer-interaction.dto";
+import { FindCompanyCustomerInteractionsQueryDto } from "./dto/find-company-customer-interactions-query.dto";
 import { FindCustomerInteractionsQueryDto } from "./dto/find-customer-interactions-query.dto";
 import { UpdateCustomerInteractionDto } from "./dto/update-customer-interaction.dto";
 
@@ -377,6 +378,69 @@ export class CustomerInteractionsService {
         scheduledAt: "asc",
       },
     });
+  }
+
+  async findAllCompany(company: AuthenticatedCompany, query: FindCompanyCustomerInteractionsQueryDto) {
+    const page = this.toPositiveNumber(query.page, 1);
+    const limit = this.toPositiveNumber(query.limit, 20);
+    const safeLimit = Math.min(limit, 100);
+    const skip = (page - 1) * safeLimit;
+
+    const where: Prisma.CustomerInteractionWhereInput = {
+      companyId: company.companyId,
+      customerId: query.customerId,
+      type: query.type,
+    };
+
+    if (query.status === "PENDING") {
+      where.completedAt = null;
+    }
+
+    if (query.status === "COMPLETED") {
+      where.completedAt = {
+        not: null,
+      };
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.customerInteraction.findMany({
+        where,
+        include: {
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              status: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.customerInteraction.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        page,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+    };
   }
 
   async findOne(company: AuthenticatedCompany, customerId: string, id: string) {

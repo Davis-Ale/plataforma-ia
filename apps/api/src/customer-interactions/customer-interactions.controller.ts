@@ -7,6 +7,7 @@ import { AuthenticatedCompany } from "../auth/types/authenticated-company";
 import { AuthenticatedUser } from "../auth/types/authenticated-user";
 import { CustomerInteractionsService } from "./customer-interactions.service";
 import { CreateCustomerInteractionDto } from "./dto/create-customer-interaction.dto";
+import { FindCompanyCustomerInteractionsQueryDto } from "./dto/find-company-customer-interactions-query.dto";
 import { FindCustomerInteractionsQueryDto } from "./dto/find-customer-interactions-query.dto";
 import { UpdateCustomerInteractionDto } from "./dto/update-customer-interaction.dto";
 
@@ -109,5 +110,13 @@ export class CompanyCustomerInteractionsController {
   @Get("pending")
   async findPending(@CurrentCompany() company: AuthenticatedCompany) {
     return this.customerInteractionsService.findPending(company);
+  }
+
+  @Get()
+  async findAllCompany(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Query() query: FindCompanyCustomerInteractionsQueryDto,
+  ) {
+    return this.customerInteractionsService.findAllCompany(company, query);
   }
 }
