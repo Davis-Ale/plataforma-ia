@@ -46,6 +46,16 @@ export class CustomerInteractionsController {
     return this.customerInteractionsService.complete(company, user, customerId, id);
   }
 
+  @Post(":id/reopen")
+  async reopen(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("customerId") customerId: string,
+    @Param("id") id: string,
+  ) {
+    return this.customerInteractionsService.reopen(company, user, customerId, id);
+  }
+
   @Get(":id")
   async findOne(
     @CurrentCompany() company: AuthenticatedCompany,

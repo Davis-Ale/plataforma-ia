@@ -143,6 +143,46 @@ export class CustomerInteractionsService {
     return interaction;
   }
 
+  async reopen(
+    company: AuthenticatedCompany,
+    user: AuthenticatedUser,
+    customerId: string,
+    id: string,
+  ) {
+    await this.ensureCustomerBelongsToCompany(company, customerId);
+
+    const result = await this.prisma.customerInteraction.updateMany({
+      where: {
+        id,
+        companyId: company.companyId,
+        customerId,
+      },
+      data: {
+        completedAt: null,
+      },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException("Customer interaction not found");
+    }
+
+    const interaction = await this.findOne(company, customerId, id);
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.UPDATE,
+      resource: "customer_interaction",
+      resourceId: interaction.id,
+      metadata: {
+        customerId,
+        changedFields: ["completedAt"],
+      },
+    });
+
+    return interaction;
+  }
+
   async findOne(company: AuthenticatedCompany, customerId: string, id: string) {
     await this.ensureCustomerBelongsToCompany(company, customerId);
 
