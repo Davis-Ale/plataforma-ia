@@ -91,6 +91,11 @@ export class CustomerInteractionsController {
 export class CompanyCustomerInteractionsController {
   constructor(private readonly customerInteractionsService: CustomerInteractionsService) {}
 
+  @Get("summary")
+  async getSummary(@CurrentCompany() company: AuthenticatedCompany) {
+    return this.customerInteractionsService.getSummary(company);
+  }
+
   @Get("today")
   async findToday(@CurrentCompany() company: AuthenticatedCompany) {
     return this.customerInteractionsService.findToday(company);

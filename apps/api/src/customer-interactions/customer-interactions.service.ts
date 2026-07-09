@@ -214,6 +214,65 @@ export class CustomerInteractionsService {
     return { deleted: true, id: interaction.id };
   }
 
+  async getSummary(company: AuthenticatedCompany) {
+    const now = new Date();
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const [total, pending, completed, overdue, today] = await Promise.all([
+      this.prisma.customerInteraction.count({
+        where: {
+          companyId: company.companyId,
+        },
+      }),
+      this.prisma.customerInteraction.count({
+        where: {
+          companyId: company.companyId,
+          completedAt: null,
+        },
+      }),
+      this.prisma.customerInteraction.count({
+        where: {
+          companyId: company.companyId,
+          completedAt: {
+            not: null,
+          },
+        },
+      }),
+      this.prisma.customerInteraction.count({
+        where: {
+          companyId: company.companyId,
+          completedAt: null,
+          scheduledAt: {
+            lt: now,
+          },
+        },
+      }),
+      this.prisma.customerInteraction.count({
+        where: {
+          companyId: company.companyId,
+          completedAt: null,
+          scheduledAt: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+        },
+      }),
+    ]);
+
+    return {
+      total,
+      pending,
+      completed,
+      overdue,
+      today,
+    };
+  }
+
   async findToday(company: AuthenticatedCompany) {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
