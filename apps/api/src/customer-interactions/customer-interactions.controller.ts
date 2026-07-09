@@ -84,3 +84,15 @@ export class CustomerInteractionsController {
     return this.customerInteractionsService.findAll(company, customerId, query);
   }
 }
+
+
+@Controller("customer-interactions")
+@UseGuards(JwtAuthGuard, CompanyContextGuard)
+export class CompanyCustomerInteractionsController {
+  constructor(private readonly customerInteractionsService: CustomerInteractionsService) {}
+
+  @Get("pending")
+  async findPending(@CurrentCompany() company: AuthenticatedCompany) {
+    return this.customerInteractionsService.findPending(company);
+  }
+}
