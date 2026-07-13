@@ -97,7 +97,7 @@ export class CustomerInteractionsService {
       resourceId: interaction.id,
       metadata: {
         customerId,
-        changedFields: Object.keys(data).filter((key) => data[key as keyof UpdateCustomerInteractionDto] !== undefined),
+        changedFields: this.getChangedFields(data),
       },
     });
 
@@ -494,7 +494,7 @@ export class CustomerInteractionsService {
       resourceId: interaction.id,
       metadata: {
         customerId: interaction.customerId,
-        changedFields: Object.keys(data).filter((key) => data[key as keyof UpdateCustomerInteractionDto] !== undefined),
+        changedFields: this.getChangedFields(data),
       },
     });
 
@@ -682,6 +682,10 @@ export class CustomerInteractionsService {
         totalPages: Math.ceil(total / safeLimit),
       },
     };
+  }
+
+  private getChangedFields(data: UpdateCustomerInteractionDto) {
+    return Object.keys(data).filter((key) => data[key as keyof UpdateCustomerInteractionDto] !== undefined);
   }
 
   private async ensureCustomerBelongsToCompany(company: AuthenticatedCompany, customerId: string) {
