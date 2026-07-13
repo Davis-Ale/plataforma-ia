@@ -112,6 +112,33 @@ export class CompanyCustomerInteractionsController {
     return this.customerInteractionsService.findPending(company);
   }
 
+  @Post(":id/complete")
+  async completeCompany(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+  ) {
+    return this.customerInteractionsService.completeCompany(company, user, id);
+  }
+
+  @Post(":id/reopen")
+  async reopenCompany(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+  ) {
+    return this.customerInteractionsService.reopenCompany(company, user, id);
+  }
+
+  @Delete(":id")
+  async removeCompany(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+  ) {
+    return this.customerInteractionsService.removeCompany(company, user, id);
+  }
+
   @Patch(":id")
   async updateCompany(
     @CurrentCompany() company: AuthenticatedCompany,

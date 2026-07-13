@@ -380,6 +380,90 @@ export class CustomerInteractionsService {
     });
   }
 
+  async completeCompany(
+    company: AuthenticatedCompany,
+    user: AuthenticatedUser,
+    id: string,
+  ) {
+    const existing = await this.findOneCompany(company, id);
+
+    await this.prisma.customerInteraction.update({
+      where: { id: existing.id },
+      data: { completedAt: new Date() },
+    });
+
+    const interaction = await this.findOneCompany(company, id);
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.UPDATE,
+      resource: "customer_interaction",
+      resourceId: interaction.id,
+      metadata: {
+        customerId: interaction.customerId,
+        changedFields: ["completedAt"],
+      },
+    });
+
+    return interaction;
+  }
+
+  async reopenCompany(
+    company: AuthenticatedCompany,
+    user: AuthenticatedUser,
+    id: string,
+  ) {
+    const existing = await this.findOneCompany(company, id);
+
+    await this.prisma.customerInteraction.update({
+      where: { id: existing.id },
+      data: { completedAt: null },
+    });
+
+    const interaction = await this.findOneCompany(company, id);
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.UPDATE,
+      resource: "customer_interaction",
+      resourceId: interaction.id,
+      metadata: {
+        customerId: interaction.customerId,
+        changedFields: ["completedAt"],
+      },
+    });
+
+    return interaction;
+  }
+
+  async removeCompany(
+    company: AuthenticatedCompany,
+    user: AuthenticatedUser,
+    id: string,
+  ) {
+    const interaction = await this.findOneCompany(company, id);
+
+    await this.prisma.customerInteraction.delete({
+      where: { id: interaction.id },
+    });
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.DELETE,
+      resource: "customer_interaction",
+      resourceId: interaction.id,
+      metadata: {
+        customerId: interaction.customerId,
+        type: interaction.type,
+      },
+    });
+
+    return { deleted: true, id: interaction.id };
+  }
+
   async updateCompany(
     company: AuthenticatedCompany,
     user: AuthenticatedUser,
