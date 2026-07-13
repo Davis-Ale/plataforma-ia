@@ -380,6 +380,43 @@ export class CustomerInteractionsService {
     });
   }
 
+  async updateCompany(
+    company: AuthenticatedCompany,
+    user: AuthenticatedUser,
+    id: string,
+    data: UpdateCustomerInteractionDto,
+  ) {
+    const existing = await this.findOneCompany(company, id);
+
+    await this.prisma.customerInteraction.update({
+      where: {
+        id: existing.id,
+      },
+      data: {
+        type: data.type,
+        content: data.content,
+        scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : undefined,
+        completedAt: data.completedAt ? new Date(data.completedAt) : undefined,
+      },
+    });
+
+    const interaction = await this.findOneCompany(company, id);
+
+    await this.auditService.create({
+      companyId: company.companyId,
+      userId: user.id,
+      action: AuditAction.UPDATE,
+      resource: "customer_interaction",
+      resourceId: interaction.id,
+      metadata: {
+        customerId: interaction.customerId,
+        changedFields: Object.keys(data).filter((key) => data[key as keyof UpdateCustomerInteractionDto] !== undefined),
+      },
+    });
+
+    return interaction;
+  }
+
   async findOneCompany(company: AuthenticatedCompany, id: string) {
     const interaction = await this.prisma.customerInteraction.findFirst({
       where: {

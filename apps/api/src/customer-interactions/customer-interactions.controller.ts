@@ -112,6 +112,16 @@ export class CompanyCustomerInteractionsController {
     return this.customerInteractionsService.findPending(company);
   }
 
+  @Patch(":id")
+  async updateCompany(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() data: UpdateCustomerInteractionDto,
+  ) {
+    return this.customerInteractionsService.updateCompany(company, user, id, data);
+  }
+
   @Get(":id")
   async findOneCompany(
     @CurrentCompany() company: AuthenticatedCompany,
