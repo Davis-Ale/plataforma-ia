@@ -556,6 +556,13 @@ export class CustomerInteractionsService {
       };
     }
 
+    if (query.startDate !== undefined || query.endDate !== undefined) {
+      where.createdAt = {
+        gte: query.startDate !== undefined ? new Date(query.startDate) : undefined,
+        lte: query.endDate !== undefined ? new Date(query.endDate) : undefined,
+      };
+    }
+
     const [items, total] = await Promise.all([
       this.prisma.customerInteraction.findMany({
         where,

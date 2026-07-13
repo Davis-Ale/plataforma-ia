@@ -1,4 +1,4 @@
-import { IsEnum, IsIn, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsEnum, IsIn, IsOptional, IsString } from "class-validator";
 import { CustomerInteractionType } from "@prisma/client";
 
 export class FindCompanyCustomerInteractionsQueryDto {
@@ -21,4 +21,12 @@ export class FindCompanyCustomerInteractionsQueryDto {
   @IsOptional()
   @IsIn(["PENDING", "COMPLETED"])
   status?: "PENDING" | "COMPLETED";
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 }
