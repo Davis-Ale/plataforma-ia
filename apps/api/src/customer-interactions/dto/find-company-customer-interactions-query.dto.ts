@@ -29,4 +29,12 @@ export class FindCompanyCustomerInteractionsQueryDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  scheduledStartDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  scheduledEndDate?: string;
 }
