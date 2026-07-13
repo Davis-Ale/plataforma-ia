@@ -15,6 +15,10 @@ export class FindCompanyCustomerInteractionsQueryDto {
   customerId?: string;
 
   @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
   @IsEnum(CustomerInteractionType)
   type?: CustomerInteractionType;
 

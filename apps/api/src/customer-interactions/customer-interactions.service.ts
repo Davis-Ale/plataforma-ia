@@ -543,6 +543,7 @@ export class CustomerInteractionsService {
     const where: Prisma.CustomerInteractionWhereInput = {
       companyId: company.companyId,
       customerId: query.customerId,
+      userId: query.userId,
       type: query.type,
     };
 
