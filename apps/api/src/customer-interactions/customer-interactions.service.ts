@@ -773,13 +773,23 @@ export class CustomerInteractionsService {
       companyId: company.companyId,
       resource: "customer_interaction",
       resourceId: interactionId,
+      action: query.action,
     };
+
+    if (query.startDate !== undefined || query.endDate !== undefined) {
+      where.createdAt = {
+        gte: query.startDate !== undefined ? new Date(query.startDate) : undefined,
+        lte: query.endDate !== undefined ? new Date(query.endDate) : undefined,
+      };
+    }
+
+    const auditOrderDirection = query.orderDirection ?? "desc";
 
     const [items, total] = await Promise.all([
       this.prisma.auditLog.findMany({
         where,
         orderBy: {
-          createdAt: "desc",
+          createdAt: auditOrderDirection,
         },
         skip,
         take: safeLimit,
