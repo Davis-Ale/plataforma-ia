@@ -9,6 +9,7 @@ import { CustomerInteractionsService } from "./customer-interactions.service";
 import { CreateCustomerInteractionDto } from "./dto/create-customer-interaction.dto";
 import { FindCompanyCustomerInteractionsQueryDto } from "./dto/find-company-customer-interactions-query.dto";
 import { FindCustomerInteractionsQueryDto } from "./dto/find-customer-interactions-query.dto";
+import { FindInteractionAuditLogsQueryDto } from "./dto/find-interaction-audit-logs-query.dto";
 import { UpdateCustomerInteractionDto } from "./dto/update-customer-interaction.dto";
 
 @Controller("customers/:customerId/interactions")
@@ -65,6 +66,16 @@ export class CustomerInteractionsController {
     @Param("id") id: string,
   ) {
     return this.customerInteractionsService.remove(company, user, customerId, id);
+  }
+
+  @Get(":id/audit-logs")
+  async findAuditLogs(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("customerId") customerId: string,
+    @Param("id") id: string,
+    @Query() query: FindInteractionAuditLogsQueryDto,
+  ) {
+    return this.customerInteractionsService.findAuditLogs(company, customerId, id, query);
   }
 
   @Get(":id")
@@ -147,6 +158,15 @@ export class CompanyCustomerInteractionsController {
     @Body() data: UpdateCustomerInteractionDto,
   ) {
     return this.customerInteractionsService.updateCompany(company, user, id, data);
+  }
+
+  @Get(":id/audit-logs")
+  async findCompanyAuditLogs(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("id") id: string,
+    @Query() query: FindInteractionAuditLogsQueryDto,
+  ) {
+    return this.customerInteractionsService.findCompanyAuditLogs(company, id, query);
   }
 
   @Get(":id")

@@ -7,6 +7,7 @@ import { AuthenticatedUser } from "../auth/types/authenticated-user";
 import { CreateCustomerInteractionDto } from "./dto/create-customer-interaction.dto";
 import { FindCompanyCustomerInteractionsQueryDto } from "./dto/find-company-customer-interactions-query.dto";
 import { FindCustomerInteractionsQueryDto } from "./dto/find-customer-interactions-query.dto";
+import { FindInteractionAuditLogsQueryDto } from "./dto/find-interaction-audit-logs-query.dto";
 import { UpdateCustomerInteractionDto } from "./dto/update-customer-interaction.dto";
 
 @Injectable()
@@ -501,6 +502,12 @@ export class CustomerInteractionsService {
     return interaction;
   }
 
+  async findCompanyAuditLogs(company: AuthenticatedCompany, id: string, query: FindInteractionAuditLogsQueryDto) {
+    const interaction = await this.findOneCompany(company, id);
+
+    return this.findInteractionAuditLogs(company, interaction.id, query);
+  }
+
   async findOneCompany(company: AuthenticatedCompany, id: string) {
     const interaction = await this.prisma.customerInteraction.findFirst({
       where: {
@@ -659,6 +666,12 @@ export class CustomerInteractionsService {
     };
   }
 
+  async findAuditLogs(company: AuthenticatedCompany, customerId: string, id: string, query: FindInteractionAuditLogsQueryDto) {
+    const interaction = await this.findOne(company, customerId, id);
+
+    return this.findInteractionAuditLogs(company, interaction.id, query);
+  }
+
   async findOne(company: AuthenticatedCompany, customerId: string, id: string) {
     await this.ensureCustomerBelongsToCompany(company, customerId);
 
@@ -733,6 +746,45 @@ export class CustomerInteractionsService {
         take: safeLimit,
       }),
       this.prisma.customerInteraction.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        page,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+    };
+  }
+
+  private async findInteractionAuditLogs(
+    company: AuthenticatedCompany,
+    interactionId: string,
+    query: FindInteractionAuditLogsQueryDto,
+  ) {
+    const page = this.toPositiveNumber(query.page, 1);
+    const limit = this.toPositiveNumber(query.limit, 20);
+    const safeLimit = Math.min(limit, 100);
+    const skip = (page - 1) * safeLimit;
+
+    const where: Prisma.AuditLogWhereInput = {
+      companyId: company.companyId,
+      resource: "customer_interaction",
+      resourceId: interactionId,
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.auditLog.count({ where }),
     ]);
 
     return {
