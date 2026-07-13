@@ -571,6 +571,46 @@ export class CustomerInteractionsService {
       };
     }
 
+    if (query.q !== undefined && query.q.trim().length > 0) {
+      const search = query.q.trim();
+
+      where.OR = [
+        {
+          content: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          customer: {
+            name: {
+              contains: search,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          customer: {
+            email: {
+              contains: search,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          customer: {
+            phone: {
+              contains: search,
+              mode: "insensitive",
+            },
+          },
+        },
+      ];
+    }
+
+    const orderByField = query.orderBy ?? "createdAt";
+    const orderDirection = query.orderDirection ?? "desc";
+
     const [items, total] = await Promise.all([
       this.prisma.customerInteraction.findMany({
         where,
@@ -593,7 +633,7 @@ export class CustomerInteractionsService {
           },
         },
         orderBy: {
-          createdAt: "desc",
+          [orderByField]: orderDirection,
         },
         skip,
         take: safeLimit,

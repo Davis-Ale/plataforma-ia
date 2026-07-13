@@ -12,6 +12,10 @@ export class FindCompanyCustomerInteractionsQueryDto {
 
   @IsOptional()
   @IsString()
+  q?: string;
+
+  @IsOptional()
+  @IsString()
   customerId?: string;
 
   @IsOptional()
@@ -41,4 +45,12 @@ export class FindCompanyCustomerInteractionsQueryDto {
   @IsOptional()
   @IsDateString()
   scheduledEndDate?: string;
+
+  @IsOptional()
+  @IsIn(["createdAt", "scheduledAt"])
+  orderBy?: "createdAt" | "scheduledAt";
+
+  @IsOptional()
+  @IsIn(["asc", "desc"])
+  orderDirection?: "asc" | "desc";
 }
