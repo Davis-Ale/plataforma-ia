@@ -571,6 +571,13 @@ export class CustomerInteractionsService {
       };
     }
 
+    if (query.completedStartDate !== undefined || query.completedEndDate !== undefined) {
+      where.completedAt = {
+        gte: query.completedStartDate !== undefined ? new Date(query.completedStartDate) : undefined,
+        lte: query.completedEndDate !== undefined ? new Date(query.completedEndDate) : undefined,
+      };
+    }
+
     if (query.q !== undefined && query.q.trim().length > 0) {
       const search = query.q.trim();
 

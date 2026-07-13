@@ -47,6 +47,14 @@ export class FindCompanyCustomerInteractionsQueryDto {
   scheduledEndDate?: string;
 
   @IsOptional()
+  @IsDateString()
+  completedStartDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  completedEndDate?: string;
+
+  @IsOptional()
   @IsIn(["createdAt", "scheduledAt"])
   orderBy?: "createdAt" | "scheduledAt";
 
