@@ -380,6 +380,39 @@ export class CustomerInteractionsService {
     });
   }
 
+  async findOneCompany(company: AuthenticatedCompany, id: string) {
+    const interaction = await this.prisma.customerInteraction.findFirst({
+      where: {
+        id,
+        companyId: company.companyId,
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            status: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (interaction === null) {
+      throw new NotFoundException("Customer interaction not found");
+    }
+
+    return interaction;
+  }
+
   async findAllCompany(company: AuthenticatedCompany, query: FindCompanyCustomerInteractionsQueryDto) {
     const page = this.toPositiveNumber(query.page, 1);
     const limit = this.toPositiveNumber(query.limit, 20);

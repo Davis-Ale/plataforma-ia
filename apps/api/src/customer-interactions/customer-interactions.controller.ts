@@ -112,6 +112,14 @@ export class CompanyCustomerInteractionsController {
     return this.customerInteractionsService.findPending(company);
   }
 
+  @Get(":id")
+  async findOneCompany(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("id") id: string,
+  ) {
+    return this.customerInteractionsService.findOneCompany(company, id);
+  }
+
   @Get()
   async findAllCompany(
     @CurrentCompany() company: AuthenticatedCompany,
