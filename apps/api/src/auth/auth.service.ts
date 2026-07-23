@@ -19,12 +19,11 @@ export class AuthService {
   async login(data: LoginDto) {
     const user = await this.findUserByEmail(data.email);
 
-    const userCanLogin =
-      user !== null &&
-      user.passwordHash !== null &&
-      user.status === UserStatus.ACTIVE;
-
-    if (userCanLogin === false) {
+    if (
+      user === null ||
+      user.passwordHash === null ||
+      user.status !== UserStatus.ACTIVE
+    ) {
       throw new UnauthorizedException("Invalid credentials");
     }
 
@@ -68,12 +67,11 @@ export class AuthService {
 
     const user = await this.findUserById(payload.sub);
 
-    const userCanRefresh =
-      user !== null &&
-      user.email === payload.email &&
-      user.status === UserStatus.ACTIVE;
-
-    if (userCanRefresh === false) {
+    if (
+      user === null ||
+      user.email !== payload.email ||
+      user.status !== UserStatus.ACTIVE
+    ) {
       throw new UnauthorizedException("Invalid refresh token");
     }
 
