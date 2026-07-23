@@ -1,10 +1,21 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import { CurrentCompany } from "../auth/decorators/current-company.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { CompanyContextGuard } from "../auth/guards/company-context.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { AuthenticatedCompany } from "../auth/types/authenticated-company";
 import { AuthenticatedUser } from "../auth/types/authenticated-user";
+import { CustomerInteractionsSummaryService } from "./customer-interactions-summary.service";
 import { CustomerInteractionsService } from "./customer-interactions.service";
 import { CreateCustomerInteractionDto } from "./dto/create-customer-interaction.dto";
 import { FindCompanyCustomerInteractionsQueryDto } from "./dto/find-company-customer-interactions-query.dto";
@@ -15,14 +26,20 @@ import { UpdateCustomerInteractionDto } from "./dto/update-customer-interaction.
 @Controller("customers/:customerId/interactions")
 @UseGuards(JwtAuthGuard, CompanyContextGuard)
 export class CustomerInteractionsController {
-  constructor(private readonly customerInteractionsService: CustomerInteractionsService) {}
+  constructor(
+    private readonly customerInteractionsService: CustomerInteractionsService,
+    private readonly customerInteractionsSummaryService: CustomerInteractionsSummaryService,
+  ) {}
 
   @Get("summary")
   async getCustomerSummary(
     @CurrentCompany() company: AuthenticatedCompany,
     @Param("customerId") customerId: string,
   ) {
-    return this.customerInteractionsService.getCustomerSummary(company, customerId);
+    return this.customerInteractionsSummaryService.getCustomerSummary(
+      company,
+      customerId,
+    );
   }
 
   @Post()
@@ -32,7 +49,12 @@ export class CustomerInteractionsController {
     @Param("customerId") customerId: string,
     @Body() data: CreateCustomerInteractionDto,
   ) {
-    return this.customerInteractionsService.create(company, user, customerId, data);
+    return this.customerInteractionsService.create(
+      company,
+      user,
+      customerId,
+      data,
+    );
   }
 
   @Patch(":id")
@@ -43,7 +65,13 @@ export class CustomerInteractionsController {
     @Param("id") id: string,
     @Body() data: UpdateCustomerInteractionDto,
   ) {
-    return this.customerInteractionsService.update(company, user, customerId, id, data);
+    return this.customerInteractionsService.update(
+      company,
+      user,
+      customerId,
+      id,
+      data,
+    );
   }
 
   @Post(":id/complete")
@@ -53,7 +81,12 @@ export class CustomerInteractionsController {
     @Param("customerId") customerId: string,
     @Param("id") id: string,
   ) {
-    return this.customerInteractionsService.complete(company, user, customerId, id);
+    return this.customerInteractionsService.complete(
+      company,
+      user,
+      customerId,
+      id,
+    );
   }
 
   @Post(":id/reopen")
@@ -63,7 +96,12 @@ export class CustomerInteractionsController {
     @Param("customerId") customerId: string,
     @Param("id") id: string,
   ) {
-    return this.customerInteractionsService.reopen(company, user, customerId, id);
+    return this.customerInteractionsService.reopen(
+      company,
+      user,
+      customerId,
+      id,
+    );
   }
 
   @Delete(":id")
@@ -73,7 +111,12 @@ export class CustomerInteractionsController {
     @Param("customerId") customerId: string,
     @Param("id") id: string,
   ) {
-    return this.customerInteractionsService.remove(company, user, customerId, id);
+    return this.customerInteractionsService.remove(
+      company,
+      user,
+      customerId,
+      id,
+    );
   }
 
   @Get(":id/audit-logs")
@@ -83,7 +126,12 @@ export class CustomerInteractionsController {
     @Param("id") id: string,
     @Query() query: FindInteractionAuditLogsQueryDto,
   ) {
-    return this.customerInteractionsService.findAuditLogs(company, customerId, id, query);
+    return this.customerInteractionsService.findAuditLogs(
+      company,
+      customerId,
+      id,
+      query,
+    );
   }
 
   @Get(":id")
@@ -92,7 +140,11 @@ export class CustomerInteractionsController {
     @Param("customerId") customerId: string,
     @Param("id") id: string,
   ) {
-    return this.customerInteractionsService.findOne(company, customerId, id);
+    return this.customerInteractionsService.findOne(
+      company,
+      customerId,
+      id,
+    );
   }
 
   @Get()
@@ -101,19 +153,25 @@ export class CustomerInteractionsController {
     @Param("customerId") customerId: string,
     @Query() query: FindCustomerInteractionsQueryDto,
   ) {
-    return this.customerInteractionsService.findAll(company, customerId, query);
+    return this.customerInteractionsService.findAll(
+      company,
+      customerId,
+      query,
+    );
   }
 }
-
 
 @Controller("customer-interactions")
 @UseGuards(JwtAuthGuard, CompanyContextGuard)
 export class CompanyCustomerInteractionsController {
-  constructor(private readonly customerInteractionsService: CustomerInteractionsService) {}
+  constructor(
+    private readonly customerInteractionsService: CustomerInteractionsService,
+    private readonly customerInteractionsSummaryService: CustomerInteractionsSummaryService,
+  ) {}
 
   @Get("summary")
   async getSummary(@CurrentCompany() company: AuthenticatedCompany) {
-    return this.customerInteractionsService.getSummary(company);
+    return this.customerInteractionsSummaryService.getCompanySummary(company);
   }
 
   @Get("today")
@@ -137,7 +195,11 @@ export class CompanyCustomerInteractionsController {
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
   ) {
-    return this.customerInteractionsService.completeCompany(company, user, id);
+    return this.customerInteractionsService.completeCompany(
+      company,
+      user,
+      id,
+    );
   }
 
   @Post(":id/reopen")
@@ -165,7 +227,12 @@ export class CompanyCustomerInteractionsController {
     @Param("id") id: string,
     @Body() data: UpdateCustomerInteractionDto,
   ) {
-    return this.customerInteractionsService.updateCompany(company, user, id, data);
+    return this.customerInteractionsService.updateCompany(
+      company,
+      user,
+      id,
+      data,
+    );
   }
 
   @Get(":id/audit-logs")
@@ -174,7 +241,11 @@ export class CompanyCustomerInteractionsController {
     @Param("id") id: string,
     @Query() query: FindInteractionAuditLogsQueryDto,
   ) {
-    return this.customerInteractionsService.findCompanyAuditLogs(company, id, query);
+    return this.customerInteractionsService.findCompanyAuditLogs(
+      company,
+      id,
+      query,
+    );
   }
 
   @Get(":id")
