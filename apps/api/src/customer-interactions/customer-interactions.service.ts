@@ -17,6 +17,68 @@ export class CustomerInteractionsService {
     private readonly auditService: AuditService,
   ) {}
 
+  async getCustomerSummary(company: AuthenticatedCompany, customerId: string) {
+    await this.ensureCustomerBelongsToCompany(company, customerId);
+
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(now);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const baseWhere: Prisma.CustomerInteractionWhereInput = {
+      companyId: company.companyId,
+      customerId,
+    };
+
+    const [total, pending, completed, overdue, today, scheduled] = await Promise.all([
+      this.prisma.customerInteraction.count({ where: baseWhere }),
+      this.prisma.customerInteraction.count({
+        where: {
+          ...baseWhere,
+          completedAt: null,
+        },
+      }),
+      this.prisma.customerInteraction.count({
+        where: {
+          ...baseWhere,
+          completedAt: { not: null },
+        },
+      }),
+      this.prisma.customerInteraction.count({
+        where: {
+          ...baseWhere,
+          completedAt: null,
+          scheduledAt: { lt: now },
+        },
+      }),
+      this.prisma.customerInteraction.count({
+        where: {
+          ...baseWhere,
+          scheduledAt: {
+            gte: startOfToday,
+            lte: endOfToday,
+          },
+        },
+      }),
+      this.prisma.customerInteraction.count({
+        where: {
+          ...baseWhere,
+          scheduledAt: { not: null },
+        },
+      }),
+    ]);
+
+    return {
+      total,
+      pending,
+      completed,
+      overdue,
+      today,
+      scheduled,
+    };
+  }
+
   async create(
     company: AuthenticatedCompany,
     user: AuthenticatedUser,

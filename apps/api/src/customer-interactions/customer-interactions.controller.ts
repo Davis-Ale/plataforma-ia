@@ -17,6 +17,14 @@ import { UpdateCustomerInteractionDto } from "./dto/update-customer-interaction.
 export class CustomerInteractionsController {
   constructor(private readonly customerInteractionsService: CustomerInteractionsService) {}
 
+  @Get("summary")
+  async getCustomerSummary(
+    @CurrentCompany() company: AuthenticatedCompany,
+    @Param("customerId") customerId: string,
+  ) {
+    return this.customerInteractionsService.getCustomerSummary(company, customerId);
+  }
+
   @Post()
   async create(
     @CurrentCompany() company: AuthenticatedCompany,
