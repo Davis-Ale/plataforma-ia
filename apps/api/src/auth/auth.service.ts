@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { UserStatus } from "@prisma/client";
 import { PasswordService } from "@plataforma/auth";
 import { PrismaService } from "@plataforma/database";
+import { AuthSessionService } from "./auth-session.service";
 import { AuthTokenService } from "./auth-token.service";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
@@ -12,16 +13,18 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
     private readonly authTokenService: AuthTokenService,
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
   async login(data: LoginDto) {
     const user = await this.findUserByEmail(data.email);
 
-    if (
-      user === null ||
-      user.passwordHash === null ||
-      user.status !== UserStatus.ACTIVE
-    ) {
+    const userCanLogin =
+      user !== null &&
+      user.passwordHash !== null &&
+      user.status === UserStatus.ACTIVE;
+
+    if (userCanLogin === false) {
       throw new UnauthorizedException("Invalid credentials");
     }
 
@@ -34,7 +37,18 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     }
 
-    const tokens = await this.authTokenService.createTokenPair(user);
+    const sessionId = this.authSessionService.createSessionId();
+    const tokens = await this.authTokenService.createTokenPair(
+      user,
+      sessionId,
+    );
+
+    await this.authSessionService.create(
+      sessionId,
+      user.id,
+      tokens.refreshToken,
+      this.authTokenService.getRefreshTokenExpirationDate(),
+    );
 
     return {
       ...tokens,
@@ -47,17 +61,50 @@ export class AuthService {
       data.refreshToken,
     );
 
+    await this.authSessionService.validateRefreshSession(
+      payload,
+      data.refreshToken,
+    );
+
     const user = await this.findUserById(payload.sub);
 
-    if (
-      user === null ||
-      user.email !== payload.email ||
-      user.status !== UserStatus.ACTIVE
-    ) {
+    const userCanRefresh =
+      user !== null &&
+      user.email === payload.email &&
+      user.status === UserStatus.ACTIVE;
+
+    if (userCanRefresh === false) {
       throw new UnauthorizedException("Invalid refresh token");
     }
 
-    return this.authTokenService.createTokenPair(user);
+    const tokens = await this.authTokenService.createTokenPair(
+      user,
+      payload.sessionId,
+    );
+
+    await this.authSessionService.rotate(
+      payload,
+      data.refreshToken,
+      tokens.refreshToken,
+      this.authTokenService.getRefreshTokenExpirationDate(),
+    );
+
+    return tokens;
+  }
+
+  async logout(data: RefreshTokenDto) {
+    const payload = await this.authTokenService.verifyRefreshToken(
+      data.refreshToken,
+    );
+
+    return this.authSessionService.revoke(
+      payload,
+      data.refreshToken,
+    );
+  }
+
+  async logoutAll(userId: string) {
+    return this.authSessionService.revokeAll(userId);
   }
 
   private findUserByEmail(email: string) {

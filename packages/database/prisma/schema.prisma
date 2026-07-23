@@ -69,10 +69,10 @@ model Company {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  users     CompanyUser[]
-  customers Customer[]
-  auditLogs    AuditLog[]
-  interactions CustomerInteraction[]
+  users                CompanyUser[]
+  customers            Customer[]
+  customerInteractions CustomerInteraction[]
+  auditLogs            AuditLog[]
 
   @@map("companies")
 }
@@ -86,9 +86,10 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  companies    CompanyUser[]
-  auditLogs    AuditLog[]
-  interactions CustomerInteraction[]
+  companies            CompanyUser[]
+  customerInteractions CustomerInteraction[]
+  auditLogs            AuditLog[]
+  sessions             AuthSession[]
 
   @@map("users")
 }
@@ -102,8 +103,8 @@ model CompanyUser {
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
-  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, userId])
   @@index([companyId])
@@ -151,6 +152,23 @@ model CustomerInteraction {
   @@index([userId])
   @@index([type])
   @@map("customer_interactions")
+}
+
+model AuthSession {
+  id               String    @id
+  userId           String    @map("user_id")
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("auth_sessions")
 }
 
 model AuditLog {

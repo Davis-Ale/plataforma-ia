@@ -9,17 +9,25 @@ const REFRESH_TOKEN_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7;
 export class AuthTokenService {
   constructor(private readonly jwtService: JwtService) {}
 
-  async createTokenPair(user: { id: string; email: string }) {
+  async createTokenPair(
+    user: {
+      id: string;
+      email: string;
+    },
+    sessionId: string,
+  ) {
     const accessPayload: JwtPayload = {
       sub: user.id,
       email: user.email,
       type: "access",
+      sessionId,
     };
 
     const refreshPayload: JwtPayload = {
       sub: user.id,
       email: user.email,
       type: "refresh",
+      sessionId,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -51,14 +59,20 @@ export class AuthTokenService {
         },
       );
 
-      if (payload.type !== "refresh") {
-        throw new UnauthorizedException("Invalid refresh token");
+      if (payload.type === "refresh" && payload.sessionId.trim().length > 0) {
+        return payload;
       }
 
-      return payload;
+      throw new UnauthorizedException("Invalid refresh token");
     } catch {
       throw new UnauthorizedException("Invalid refresh token");
     }
+  }
+
+  getRefreshTokenExpirationDate() {
+    return new Date(
+      Date.now() + REFRESH_TOKEN_EXPIRES_IN_SECONDS * 1000,
+    );
   }
 
   private getAccessTokenSecret() {
