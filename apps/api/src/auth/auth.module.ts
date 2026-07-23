@@ -5,21 +5,23 @@ import { AuthFoundationModule } from "@plataforma/auth";
 import { DatabaseModule } from "@plataforma/database";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { AuthTokenService } from "./auth-token.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 
 @Module({
   imports: [
     DatabaseModule,
     AuthFoundationModule,
-    PassportModule.register({ defaultStrategy: "jwt" }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET ?? "local-development-jwt-secret-change-me",
-      signOptions: {
-        expiresIn: "1h",
-      },
+    PassportModule.register({
+      defaultStrategy: "jwt",
     }),
+    JwtModule.register({}),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    AuthTokenService,
+    JwtStrategy,
+  ],
 })
 export class AuthModule {}
