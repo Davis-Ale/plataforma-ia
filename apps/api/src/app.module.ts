@@ -5,9 +5,10 @@ import { AuthModule } from "./auth/auth.module";
 import { AuditModule } from "./audit/audit.module";
 import { CompaniesModule } from "./companies/companies.module";
 import { CompanyUsersModule } from "./company-users/company-users.module";
-import { CustomersModule } from "./customers/customers.module";
 import { CustomerInteractionsModule } from "./customer-interactions/customer-interactions.module";
+import { CustomersModule } from "./customers/customers.module";
 import { HealthModule } from "./health/health.module";
+import { QueuesModule } from "./queues/queues.module";
 import { UsersModule } from "./users/users.module";
 
 @Module({
@@ -25,6 +26,7 @@ import { UsersModule } from "./users/users.module";
     AuditModule,
     CustomersModule,
     CustomerInteractionsModule,
+    QueuesModule,
   ],
 })
 export class AppModule {}
