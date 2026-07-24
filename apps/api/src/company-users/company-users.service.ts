@@ -6,26 +6,60 @@ import { CreateCompanyUserDto } from "./dto/create-company-user.dto";
 export class CompanyUsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: CreateCompanyUserDto) {
+  async create(
+    companyId: string,
+    data: CreateCompanyUserDto,
+  ) {
     return this.prisma.companyUser.create({
       data: {
-        companyId: data.companyId,
+        companyId,
         userId: data.userId,
         role: data.role,
       },
       include: {
-        company: { select: { id: true, name: true, status: true } },
-        user: { select: { id: true, name: true, email: true, status: true } },
+        company: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            status: true,
+          },
+        },
       },
     });
   }
 
-  async findAll() {
+  async findAll(companyId: string) {
     return this.prisma.companyUser.findMany({
-      orderBy: { createdAt: "desc" },
+      where: {
+        companyId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
       include: {
-        company: { select: { id: true, name: true, status: true } },
-        user: { select: { id: true, name: true, email: true, status: true } },
+        company: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            status: true,
+          },
+        },
       },
     });
   }
