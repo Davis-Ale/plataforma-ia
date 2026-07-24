@@ -5,6 +5,7 @@ import { AuthModule } from "./auth/auth.module";
 import { AuditModule } from "./audit/audit.module";
 import { CompaniesModule } from "./companies/companies.module";
 import { CompanyUsersModule } from "./company-users/company-users.module";
+import { ContractsModule } from "./contracts/contracts.module";
 import { CustomerInteractionsModule } from "./customer-interactions/customer-interactions.module";
 import { CustomersModule } from "./customers/customers.module";
 import { DepartmentsModule } from "./departments/departments.module";
@@ -33,6 +34,7 @@ import { UsersModule } from "./users/users.module";
     DepartmentsModule,
     PositionsModule,
     EmployeesModule,
+    ContractsModule,
   ],
 })
 export class AppModule {}

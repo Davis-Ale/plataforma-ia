@@ -68,6 +68,12 @@ enum EmployeeStatus {
   ARCHIVED
 }
 
+enum ContractStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -85,6 +91,7 @@ model Company {
   departments          Department[]
   positions            Position[]
   employees            Employee[]
+  contracts            Contract[]
 
   @@map("companies")
 }
@@ -250,6 +257,7 @@ model Position {
 
   company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employees Employee[]
+  contracts Contract[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -272,6 +280,7 @@ model Employee {
   company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   position   Position?   @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  contracts  Contract[]
 
   @@unique([companyId, cpf])
   @@index([companyId, status])
@@ -279,6 +288,32 @@ model Employee {
   @@index([departmentId])
   @@index([positionId])
   @@map("employees")
+}
+
+model Contract {
+  id             String         @id @default(uuid())
+  companyId      String         @map("company_id")
+  employeeId     String         @map("employee_id")
+  positionId     String?        @map("position_id")
+  employmentType String         @map("employment_type")
+  admissionDate  DateTime       @map("admission_date")
+  unit           String
+  workRegime     String         @map("work_regime")
+  status         ContractStatus @default(ACTIVE)
+  archivedAt     DateTime?      @map("archived_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  position Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([employeeId])
+  @@index([positionId])
+  @@index([companyId, unit])
+  @@map("contracts")
 }
 
 model FoundationCheck {
