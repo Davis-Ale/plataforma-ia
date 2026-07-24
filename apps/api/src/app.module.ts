@@ -7,6 +7,7 @@ import { CompaniesModule } from "./companies/companies.module";
 import { CompanyUsersModule } from "./company-users/company-users.module";
 import { CustomerInteractionsModule } from "./customer-interactions/customer-interactions.module";
 import { CustomersModule } from "./customers/customers.module";
+import { DepartmentsModule } from "./departments/departments.module";
 import { HealthModule } from "./health/health.module";
 import { QueuesModule } from "./queues/queues.module";
 import { UsersModule } from "./users/users.module";
@@ -27,6 +28,7 @@ import { UsersModule } from "./users/users.module";
     CustomersModule,
     CustomerInteractionsModule,
     QueuesModule,
+    DepartmentsModule,
   ],
 })
 export class AppModule {}
