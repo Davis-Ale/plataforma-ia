@@ -62,6 +62,12 @@ enum QueueEventStatus {
   FAILED
 }
 
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -78,6 +84,7 @@ model Company {
   queueEvents          QueueEvent[]
   departments          Department[]
   positions            Position[]
+  employees            Employee[]
 
   @@map("companies")
 }
@@ -225,7 +232,8 @@ model Department {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees Employee[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -240,11 +248,37 @@ model Position {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees Employee[]
 
   @@unique([companyId, name])
   @@index([companyId])
   @@map("positions")
+}
+
+model Employee {
+  id           String         @id @default(uuid())
+  companyId    String         @map("company_id")
+  departmentId String?        @map("department_id")
+  positionId   String?        @map("position_id")
+  name         String
+  cpf          String
+  email        String
+  status       EmployeeStatus @default(ACTIVE)
+  archivedAt   DateTime?      @map("archived_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  position   Position?   @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, cpf])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([departmentId])
+  @@index([positionId])
+  @@map("employees")
 }
 
 model FoundationCheck {
