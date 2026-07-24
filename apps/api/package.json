@@ -11,6 +11,10 @@
     "test": "jest"
   },
   "dependencies": {
+    "@bull-board/api": "^8.3.0",
+    "@bull-board/express": "^8.3.0",
+    "@bull-board/nestjs": "^8.3.0",
+    "@nestjs/bullmq": "^10.1.0",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.2.0",
     "@nestjs/core": "^10.3.0",
@@ -18,19 +22,19 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.3.0",
     "@nestjs/swagger": "^7.3.0",
-    "@nestjs/bullmq": "^10.1.0",
+    "@plataforma/auth": "workspace:*",
+    "@plataforma/database": "workspace:*",
     "@prisma/client": "^5.15.0",
     "bullmq": "^5.8.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "express-basic-auth": "^1.2.1",
     "ioredis": "^5.4.0",
+    "nestjs-i18n": "^10.4.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "nestjs-i18n": "^10.4.0",
-    "@plataforma/database": "workspace:*",
-    "@plataforma/auth": "workspace:*"
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.3.0",

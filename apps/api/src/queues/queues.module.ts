@@ -1,6 +1,10 @@
+import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
+import { ExpressAdapter } from "@bull-board/express";
+import { BullBoardModule } from "@bull-board/nestjs";
+import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { BullModule } from "@nestjs/bullmq";
+import { createBullBoardAuthMiddleware } from "./bull-board-auth.middleware";
 import { NotifyProcessor } from "./processors/notify.processor";
 import { RetryProcessor } from "./processors/retry.processor";
 import { SyncProcessor } from "./processors/sync.processor";
@@ -19,9 +23,12 @@ import { QueuesService } from "./queues.service";
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         connection: {
-          host: configService.get<string>("REDIS_HOST") ?? "localhost",
+          host:
+            configService.get<string>("REDIS_HOST") ??
+            "localhost",
           port: Number(
-            configService.get<string>("REDIS_PORT") ?? "6380",
+            configService.get<string>("REDIS_PORT") ??
+              "6380",
           ),
         },
       }),
@@ -38,6 +45,34 @@ import { QueuesService } from "./queues.service";
       {
         name: RETRY_QUEUE,
         defaultJobOptions: DEFAULT_JOB_OPTIONS,
+      },
+    ),
+    BullBoardModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        route: "/queues",
+        adapter: ExpressAdapter,
+        middleware: createBullBoardAuthMiddleware(
+          configService.get<string>("BULL_BOARD_USER"),
+          configService.get<string>(
+            "BULL_BOARD_PASSWORD",
+          ),
+        ),
+      }),
+    }),
+    BullBoardModule.forFeature(
+      {
+        name: SYNC_QUEUE,
+        adapter: BullMQAdapter,
+      },
+      {
+        name: NOTIFY_QUEUE,
+        adapter: BullMQAdapter,
+      },
+      {
+        name: RETRY_QUEUE,
+        adapter: BullMQAdapter,
       },
     ),
   ],
