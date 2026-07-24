@@ -77,6 +77,7 @@ model Company {
   auditLogs            AuditLog[]
   queueEvents          QueueEvent[]
   departments          Department[]
+  positions            Position[]
 
   @@map("companies")
 }
@@ -229,6 +230,21 @@ model Department {
   @@unique([companyId, name])
   @@index([companyId])
   @@map("departments")
+}
+
+model Position {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("positions")
 }
 
 model FoundationCheck {

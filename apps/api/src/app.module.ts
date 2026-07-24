@@ -9,6 +9,7 @@ import { CustomerInteractionsModule } from "./customer-interactions/customer-int
 import { CustomersModule } from "./customers/customers.module";
 import { DepartmentsModule } from "./departments/departments.module";
 import { HealthModule } from "./health/health.module";
+import { PositionsModule } from "./positions/positions.module";
 import { QueuesModule } from "./queues/queues.module";
 import { UsersModule } from "./users/users.module";
 
@@ -29,6 +30,7 @@ import { UsersModule } from "./users/users.module";
     CustomerInteractionsModule,
     QueuesModule,
     DepartmentsModule,
+    PositionsModule,
   ],
 })
 export class AppModule {}
