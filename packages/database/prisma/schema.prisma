@@ -1,8 +1,3 @@
-// ===========================================
-// PRISMA SCHEMA - PLATAFORMA IA
-// Base multi-tenant foundation
-// ===========================================
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -60,6 +55,13 @@ enum AuditAction {
   LOGOUT
 }
 
+enum QueueEventStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -73,6 +75,7 @@ model Company {
   customers            Customer[]
   customerInteractions CustomerInteraction[]
   auditLogs            AuditLog[]
+  queueEvents          QueueEvent[]
 
   @@map("companies")
 }
@@ -189,6 +192,27 @@ model AuditLog {
   @@index([resource])
   @@index([resourceId])
   @@map("audit_logs")
+}
+
+model QueueEvent {
+  id           String           @id @default(uuid())
+  companyId    String           @map("company_id")
+  queueName    String           @map("queue_name")
+  jobId        String           @map("job_id")
+  jobName      String           @map("job_name")
+  status       QueueEventStatus
+  attemptsMade Int              @default(0) @map("attempts_made")
+  payload      Json?
+  result       Json?
+  error        String?
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([queueName, jobId])
+  @@index([status, createdAt])
+  @@map("queue_events")
 }
 
 model FoundationCheck {

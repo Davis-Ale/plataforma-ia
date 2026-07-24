@@ -4,6 +4,7 @@ import { BullBoardModule } from "@bull-board/nestjs";
 import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
+import { DatabaseModule } from "@plataforma/database";
 import { createBullBoardAuthMiddleware } from "./bull-board-auth.middleware";
 import { NotifyProcessor } from "./processors/notify.processor";
 import { RetryProcessor } from "./processors/retry.processor";
@@ -14,10 +15,12 @@ import {
   SYNC_QUEUE,
 } from "./queue-names";
 import { DEFAULT_JOB_OPTIONS } from "./queue-options";
+import { QueueTrackingService } from "./queue-tracking.service";
 import { QueuesService } from "./queues.service";
 
 @Module({
   imports: [
+    DatabaseModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -51,7 +54,7 @@ import { QueuesService } from "./queues.service";
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        route: "/queues",
+        route: "/admin/queues",
         adapter: ExpressAdapter,
         middleware: createBullBoardAuthMiddleware(
           configService.get<string>("BULL_BOARD_USER"),
@@ -78,6 +81,7 @@ import { QueuesService } from "./queues.service";
   ],
   providers: [
     QueuesService,
+    QueueTrackingService,
     SyncProcessor,
     NotifyProcessor,
     RetryProcessor,
