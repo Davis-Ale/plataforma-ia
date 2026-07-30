@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { DatabaseModule } from "@plataforma/database";
 import { AuthModule } from "./auth/auth.module";
 import { AuditModule } from "./audit/audit.module";
+import { BenefitsModule } from "./benefits/benefits.module";
 import { CompaniesModule } from "./companies/companies.module";
 import { CompanyUsersModule } from "./company-users/company-users.module";
 import { ContractsModule } from "./contracts/contracts.module";
@@ -35,6 +36,7 @@ import { UsersModule } from "./users/users.module";
     PositionsModule,
     EmployeesModule,
     ContractsModule,
+    BenefitsModule,
   ],
 })
 export class AppModule {}
