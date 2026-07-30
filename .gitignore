@@ -7,10 +7,12 @@ dist/
 .next/
 .turbo/
 out/
+*.tsbuildinfo
 
 # Ambiente
 .env
 .env.local
+.env.test
 .env.*.local
 
 # Prisma
