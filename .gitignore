@@ -45,3 +45,7 @@ temp/
 # Arquivos locais de entrada
 *.ZIP
 *.zip
+
+# Private development rules
+.cursor/
+CLAUDE.md
