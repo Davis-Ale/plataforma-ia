@@ -85,6 +85,13 @@ enum BenefitStatus {
   INACTIVE
 }
 
+enum TimeEntryStatus {
+  PRESENT
+  ABSENT
+  LATE
+  INCOMPLETE
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -104,6 +111,7 @@ model Company {
   employees            Employee[]
   contracts            Contract[]
   benefits             Benefit[]
+  timeEntries          TimeEntry[]
 
   @@map("companies")
 }
@@ -294,6 +302,7 @@ model Employee {
   position   Position?   @relation(fields: [positionId], references: [id], onDelete: SetNull)
   contracts  Contract[]
   benefits   Benefit[]
+  timeEntries TimeEntry[]
 
   @@unique([companyId, cpf])
   @@index([companyId, status])
@@ -347,6 +356,31 @@ model Benefit {
   @@index([employeeId])
   @@index([type])
   @@map("benefits")
+}
+
+model TimeEntry {
+  id             String          @id @default(uuid())
+  companyId      String          @map("company_id")
+  employeeId     String          @map("employee_id")
+  workDate       DateTime        @db.Date @map("work_date")
+  clockIn        DateTime?       @map("clock_in")
+  clockOut       DateTime?       @map("clock_out")
+  workedMinutes  Int             @default(0) @map("worked_minutes")
+  lateMinutes    Int             @default(0) @map("late_minutes")
+  balanceMinutes Int             @default(0) @map("balance_minutes")
+  status         TimeEntryStatus @default(PRESENT)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, employeeId, workDate])
+  @@index([companyId, workDate])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([employeeId, workDate])
+  @@map("time_entries")
 }
 
 model FoundationCheck {
