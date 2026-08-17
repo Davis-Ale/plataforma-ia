@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { JwtPayload } from "./types/jwt-payload";
 
@@ -7,7 +8,16 @@ const REFRESH_TOKEN_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7;
 
 @Injectable()
 export class AuthTokenService {
-  constructor(private readonly jwtService: JwtService) {}
+  private readonly accessTokenSecret: string;
+  private readonly refreshTokenSecret: string;
+
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {
+    this.accessTokenSecret = this.configService.getOrThrow<string>("JWT_SECRET");
+    this.refreshTokenSecret = this.configService.getOrThrow<string>("JWT_REFRESH_SECRET");
+  }
 
   async createTokenPair(
     user: {
@@ -32,11 +42,11 @@ export class AuthTokenService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(accessPayload, {
-        secret: this.getAccessTokenSecret(),
+        secret: this.accessTokenSecret,
         expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
       }),
       this.jwtService.signAsync(refreshPayload, {
-        secret: this.getRefreshTokenSecret(),
+        secret: this.refreshTokenSecret,
         expiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
       }),
     ]);
@@ -55,7 +65,7 @@ export class AuthTokenService {
       const payload = await this.jwtService.verifyAsync<JwtPayload>(
         refreshToken,
         {
-          secret: this.getRefreshTokenSecret(),
+          secret: this.refreshTokenSecret,
         },
       );
 
@@ -75,17 +85,4 @@ export class AuthTokenService {
     );
   }
 
-  private getAccessTokenSecret() {
-    return (
-      process.env.JWT_SECRET ??
-      "local-development-jwt-secret-change-me"
-    );
-  }
-
-  private getRefreshTokenSecret() {
-    return (
-      process.env.JWT_REFRESH_SECRET ??
-      "local-development-refresh-secret-change-me"
-    );
-  }
 }
