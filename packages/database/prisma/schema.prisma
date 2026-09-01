@@ -85,6 +85,21 @@ enum BenefitStatus {
   INACTIVE
 }
 
+enum AbsenceType {
+  VACATION
+  MEDICAL_LEAVE
+  PERSONAL_LEAVE
+  UNJUSTIFIED
+  OTHER
+}
+
+enum AbsenceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum TimeEntryStatus {
   PRESENT
   ABSENT
@@ -112,6 +127,7 @@ model Company {
   contracts            Contract[]
   benefits             Benefit[]
   timeEntries          TimeEntry[]
+  absences             Absence[]
 
   @@map("companies")
 }
@@ -303,6 +319,7 @@ model Employee {
   contracts  Contract[]
   benefits   Benefit[]
   timeEntries TimeEntry[]
+  absences    Absence[]
 
   @@unique([companyId, cpf])
   @@index([companyId, status])
@@ -381,6 +398,28 @@ model TimeEntry {
   @@index([companyId, createdAt])
   @@index([employeeId, workDate])
   @@map("time_entries")
+}
+
+model Absence {
+  id         String        @id @default(uuid())
+  companyId  String        @map("company_id")
+  employeeId String        @map("employee_id")
+  type       AbsenceType
+  startDate  DateTime      @db.Date @map("start_date")
+  endDate    DateTime      @db.Date @map("end_date")
+  reason     String?
+  status     AbsenceStatus @default(PENDING)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status])
+  @@index([companyId, startDate])
+  @@index([companyId, createdAt])
+  @@index([employeeId, startDate])
+  @@map("absences")
 }
 
 model FoundationCheck {

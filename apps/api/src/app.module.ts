@@ -15,6 +15,7 @@ import { HealthModule } from "./health/health.module";
 import { PositionsModule } from "./positions/positions.module";
 import { QueuesModule } from "./queues/queues.module";
 import { TimeEntriesModule } from "./time-entries/time-entries.module";
+import { AbsencesModule } from "./absences/absences.module";
 import { UsersModule } from "./users/users.module";
 
 @Module({
@@ -39,6 +40,7 @@ import { UsersModule } from "./users/users.module";
     ContractsModule,
     BenefitsModule,
     TimeEntriesModule,
+    AbsencesModule,
   ],
 })
 export class AppModule {}
