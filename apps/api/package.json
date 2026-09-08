@@ -27,6 +27,7 @@
     "@nestjs/swagger": "^7.3.0",
     "@plataforma/auth": "workspace:*",
     "@plataforma/database": "workspace:*",
+    "@plataforma/workflows": "workspace:*",
     "@prisma/client": "^5.15.0",
     "bullmq": "^5.81.1",
     "class-transformer": "^0.5.1",

@@ -26,7 +26,8 @@
       "@plataforma/audit": ["./packages/audit/src"],
       "@plataforma/queues": ["./packages/queues/src"],
       "@plataforma/ai": ["./packages/ai/src"],
-      "@plataforma/shared": ["./packages/shared/src"]
+      "@plataforma/shared": ["./packages/shared/src"],
+      "@plataforma/workflows": ["./packages/workflows/src"]
     }
   },
   "exclude": ["node_modules", "dist", ".next", "coverage"]

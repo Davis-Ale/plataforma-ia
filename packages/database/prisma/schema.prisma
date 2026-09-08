@@ -112,6 +112,14 @@ enum RequestStatus {
   CLOSED
 }
 
+enum WorkflowStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -134,6 +142,8 @@ model Company {
   timeEntries          TimeEntry[]
   absences             Absence[]
   requests             Request[]
+  workflowRuns         WorkflowRun[]
+  workflowSteps        WorkflowStep[]
 
   @@map("companies")
 }
@@ -445,6 +455,51 @@ model Request {
   @@index([companyId, status])
   @@index([companyId, createdAt])
   @@map("requests")
+}
+
+model WorkflowRun {
+  id          String         @id @default(uuid())
+  companyId   String         @map("company_id")
+  workflowKey String         @map("workflow_key")
+  status      WorkflowStatus @default(PENDING)
+  input       Json?
+  output      Json?
+  error       String?
+  startedAt   DateTime?      @map("started_at")
+  completedAt DateTime?      @map("completed_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  steps   WorkflowStep[]
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@map("workflow_runs")
+}
+
+model WorkflowStep {
+  id            String         @id @default(uuid())
+  companyId     String         @map("company_id")
+  workflowRunId String         @map("workflow_run_id")
+  stepKey       String         @map("step_key")
+  stepOrder     Int            @map("step_order")
+  status        WorkflowStatus @default(PENDING)
+  input         Json?
+  output        Json?
+  error         String?
+  startedAt     DateTime?      @map("started_at")
+  completedAt   DateTime?      @map("completed_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, workflowRunId])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@map("workflow_steps")
 }
 
 model FoundationCheck {

@@ -18,6 +18,7 @@ import { TimeEntriesModule } from "./time-entries/time-entries.module";
 import { AbsencesModule } from "./absences/absences.module";
 import { RequestsModule } from "./requests/requests.module";
 import { UsersModule } from "./users/users.module";
+import { WorkflowsModule } from "./workflows/workflows.module";
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { UsersModule } from "./users/users.module";
     TimeEntriesModule,
     AbsencesModule,
     RequestsModule,
+    WorkflowsModule,
   ],
 })
 export class AppModule {}
