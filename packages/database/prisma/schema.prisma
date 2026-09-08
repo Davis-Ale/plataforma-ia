@@ -107,6 +107,11 @@ enum TimeEntryStatus {
   INCOMPLETE
 }
 
+enum RequestStatus {
+  OPEN
+  CLOSED
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -128,6 +133,7 @@ model Company {
   benefits             Benefit[]
   timeEntries          TimeEntry[]
   absences             Absence[]
+  requests             Request[]
 
   @@map("companies")
 }
@@ -145,6 +151,7 @@ model User {
   customerInteractions CustomerInteraction[]
   auditLogs            AuditLog[]
   sessions             AuthSession[]
+  createdRequests      Request[]
 
   @@map("users")
 }
@@ -420,6 +427,24 @@ model Absence {
   @@index([companyId, createdAt])
   @@index([employeeId, startDate])
   @@map("absences")
+}
+
+model Request {
+  id              String        @id @default(uuid())
+  companyId       String        @map("company_id")
+  createdByUserId String        @map("created_by_user_id")
+  title           String
+  description     String
+  status          RequestStatus @default(OPEN)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdByUser User    @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@map("requests")
 }
 
 model FoundationCheck {
