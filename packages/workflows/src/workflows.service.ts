@@ -77,15 +77,11 @@ export class WorkflowsService {
       startedAt: new Date(),
     };
 
-    await this.applyRunUpdate(
+    return this.applyRunUpdate(
       companyId,
       workflowRunId,
       updateData,
-    );
-
-    return this.findRunOrThrow(
-      companyId,
-      workflowRunId,
+      run.status,
     );
   }
 
@@ -122,17 +118,13 @@ export class WorkflowsService {
       startedAt: new Date(),
     };
 
-    await this.applyStepUpdate(
+    return this.applyStepUpdate(
       companyId,
       workflowRunId,
       stepId,
       updateData,
-    );
-
-    return this.findStepOrThrow(
-      companyId,
-      workflowRunId,
-      stepId,
+      step.status,
+      WorkflowStatus.RUNNING,
     );
   }
 
@@ -160,17 +152,12 @@ export class WorkflowsService {
       completedAt: new Date(),
     };
 
-    await this.applyStepUpdate(
+    return this.applyStepUpdate(
       companyId,
       workflowRunId,
       stepId,
       updateData,
-    );
-
-    return this.findStepOrThrow(
-      companyId,
-      workflowRunId,
-      stepId,
+      step.status,
     );
   }
 
@@ -198,17 +185,12 @@ export class WorkflowsService {
       completedAt: new Date(),
     };
 
-    await this.applyStepUpdate(
+    return this.applyStepUpdate(
       companyId,
       workflowRunId,
       stepId,
       updateData,
-    );
-
-    return this.findStepOrThrow(
-      companyId,
-      workflowRunId,
-      stepId,
+      step.status,
     );
   }
 
@@ -234,15 +216,11 @@ export class WorkflowsService {
       completedAt: new Date(),
     };
 
-    await this.applyRunUpdate(
+    return this.applyRunUpdate(
       companyId,
       workflowRunId,
       updateData,
-    );
-
-    return this.findRunOrThrow(
-      companyId,
-      workflowRunId,
+      run.status,
     );
   }
 
@@ -268,15 +246,11 @@ export class WorkflowsService {
       completedAt: new Date(),
     };
 
-    await this.applyRunUpdate(
+    return this.applyRunUpdate(
       companyId,
       workflowRunId,
       updateData,
-    );
-
-    return this.findRunOrThrow(
-      companyId,
-      workflowRunId,
+      run.status,
     );
   }
 
@@ -303,15 +277,11 @@ export class WorkflowsService {
       completedAt: new Date(),
     };
 
-    await this.applyRunUpdate(
+    return this.applyRunUpdate(
       companyId,
       workflowRunId,
       updateData,
-    );
-
-    return this.findRunOrThrow(
-      companyId,
-      workflowRunId,
+      run.status,
     );
   }
 
@@ -359,19 +329,23 @@ export class WorkflowsService {
     companyId: string,
     workflowRunId: string,
     data: UpdateWorkflowRunData,
+    expectedStatus: WorkflowStatus,
   ) {
     const result =
       await this.workflowsRepository.updateRun(
         companyId,
         workflowRunId,
         data,
+        expectedStatus,
       );
 
-    if (result.count === 0) {
-      throw new NotFoundException(
-        "Workflow run not found",
-      );
+    if (result.record === null) {
+      throw new NotFoundException("Workflow run not found");
     }
+    if (result.count === 0) {
+      throw new BadRequestException("Workflow run cannot be transitioned");
+    }
+    return result.record;
   }
 
   private async applyStepUpdate(
@@ -379,6 +353,8 @@ export class WorkflowsService {
     workflowRunId: string,
     stepId: string,
     data: UpdateWorkflowStepData,
+    expectedStatus: WorkflowStatus,
+    expectedRunStatus?: WorkflowStatus,
   ) {
     const result =
       await this.workflowsRepository.updateStep(
@@ -386,12 +362,16 @@ export class WorkflowsService {
         workflowRunId,
         stepId,
         data,
+        expectedStatus,
+        expectedRunStatus,
       );
 
-    if (result.count === 0) {
-      throw new NotFoundException(
-        "Workflow step not found",
-      );
+    if (result.record === null) {
+      throw new NotFoundException("Workflow step not found");
     }
+    if (result.count === 0) {
+      throw new BadRequestException("Workflow step cannot be transitioned");
+    }
+    return result.record;
   }
 }

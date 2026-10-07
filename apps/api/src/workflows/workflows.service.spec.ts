@@ -187,6 +187,7 @@ describe("WorkflowsService", () => {
       .mockResolvedValueOnce(runningRun);
     repository.updateRun.mockResolvedValue({
       count: 1,
+      record: runningRun,
     });
 
     const result = await service.startRun(
@@ -241,6 +242,7 @@ describe("WorkflowsService", () => {
       .mockResolvedValueOnce(runningStep);
     repository.updateStep.mockResolvedValue({
       count: 1,
+      record: runningStep,
     });
 
     const result = await service.startStep(
@@ -292,6 +294,7 @@ describe("WorkflowsService", () => {
       .mockResolvedValueOnce(completedStep);
     repository.updateStep.mockResolvedValue({
       count: 1,
+      record: completedStep,
     });
 
     const result = await service.completeStep(
@@ -335,6 +338,7 @@ describe("WorkflowsService", () => {
       .mockResolvedValueOnce(failedStep);
     repository.updateStep.mockResolvedValue({
       count: 1,
+      record: failedStep,
     });
 
     const result = await service.failStep(
@@ -390,6 +394,7 @@ describe("WorkflowsService", () => {
       .mockResolvedValueOnce(completedRun);
     repository.updateRun.mockResolvedValue({
       count: 1,
+      record: completedRun,
     });
 
     const result = await service.completeRun(
@@ -419,6 +424,7 @@ describe("WorkflowsService", () => {
       .mockResolvedValueOnce(failedRun);
     repository.updateRun.mockResolvedValue({
       count: 1,
+      record: failedRun,
     });
 
     const result = await service.failRun(
@@ -442,6 +448,7 @@ describe("WorkflowsService", () => {
       .mockResolvedValueOnce(cancelledRun);
     repository.updateRun.mockResolvedValue({
       count: 1,
+      record: cancelledRun,
     });
 
     const result = await service.cancelRun(
@@ -469,6 +476,7 @@ describe("WorkflowsService", () => {
       .mockResolvedValueOnce(cancelledRun);
     repository.updateRun.mockResolvedValue({
       count: 1,
+      record: cancelledRun,
     });
 
     const result = await service.cancelRun(
@@ -591,4 +599,41 @@ describe("WorkflowsService", () => {
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+  it("rejects a lost run transition without auditing", async () => {
+    repository.findRun.mockResolvedValue(sampleRun);
+    repository.updateRun.mockResolvedValue({
+      count: 0,
+      record: { ...sampleRun, status: WorkflowStatus.RUNNING },
+    });
+    await expect(service.startRun(companyId, workflowRunId))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.updateRun).toHaveBeenCalledWith(
+      companyId,
+      workflowRunId,
+      expect.objectContaining({ status: WorkflowStatus.RUNNING }),
+      WorkflowStatus.PENDING,
+    );
+    expect(auditService.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a lost step start with both expected statuses and no audit", async () => {
+    repository.findRun.mockResolvedValue({ ...sampleRun, status: WorkflowStatus.RUNNING });
+    repository.findStep.mockResolvedValue(sampleStep);
+    repository.updateStep.mockResolvedValue({
+      count: 0,
+      record: { ...sampleStep, status: WorkflowStatus.RUNNING },
+    });
+    await expect(service.startStep(companyId, workflowRunId, workflowStepId))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.updateStep).toHaveBeenCalledWith(
+      companyId,
+      workflowRunId,
+      workflowStepId,
+      expect.objectContaining({ status: WorkflowStatus.RUNNING }),
+      WorkflowStatus.PENDING,
+      WorkflowStatus.RUNNING,
+    );
+    expect(auditService.create).not.toHaveBeenCalled();
+  });
+
 });
