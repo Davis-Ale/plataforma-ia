@@ -120,6 +120,18 @@ enum WorkflowStatus {
   CANCELLED
 }
 
+enum CapabilityApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CONSUMED
+}
+
+enum CapabilityApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -144,6 +156,7 @@ model Company {
   requests             Request[]
   workflowRuns         WorkflowRun[]
   workflowSteps        WorkflowStep[]
+  capabilityApprovals  CapabilityApproval[]
 
   @@map("companies")
 }
@@ -162,6 +175,8 @@ model User {
   auditLogs            AuditLog[]
   sessions             AuthSession[]
   createdRequests      Request[]
+  requestedApprovals   CapabilityApproval[] @relation("ApprovalRequester")
+  decidedApprovals     CapabilityApproval[] @relation("ApprovalDecider")
 
   @@map("users")
 }
@@ -507,4 +522,27 @@ model FoundationCheck {
   createdAt DateTime @default(now())
 
   @@map("_foundation_checks")
+}
+
+model CapabilityApproval {
+  id                String                     @id @default(uuid())
+  companyId         String                     @map("company_id")
+  requestedByUserId String                     @map("requested_by_user_id")
+  capabilityKey     String                     @map("capability_key")
+  inputHash         String                     @map("input_hash")
+  status            CapabilityApprovalStatus   @default(PENDING)
+  decision          CapabilityApprovalDecision?
+  decidedByUserId   String?                    @map("decided_by_user_id")
+  decidedAt         DateTime?                  @map("decided_at")
+  consumedAt        DateTime?                  @map("consumed_at")
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
+
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation("ApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  decidedBy   User?   @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status])
+  @@index([companyId, requestedByUserId])
+  @@map("capability_approvals")
 }

@@ -19,6 +19,7 @@ import { AbsencesModule } from "./absences/absences.module";
 import { RequestsModule } from "./requests/requests.module";
 import { UsersModule } from "./users/users.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
+import { CapabilitiesModule } from "./capabilities/capabilities.module";
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { WorkflowsModule } from "./workflows/workflows.module";
     AbsencesModule,
     RequestsModule,
     WorkflowsModule,
+    CapabilitiesModule,
   ],
 })
 export class AppModule {}
