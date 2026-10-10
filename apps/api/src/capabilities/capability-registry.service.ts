@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Capability } from "./capability.types";
+import { snapshotContextPolicy } from "../context-engine/context-engine";
+import { ContextPolicy } from "../context-engine/context.types";
 
 @Injectable()
 export class CapabilityRegistry {
@@ -36,7 +38,17 @@ export class CapabilityRegistry {
     }
 
     const { key, validate, authorize, execute } = capability;
+    const policy = capability.context === undefined ? undefined : snapshotContextPolicy(capability.context);
+    const contextPolicy: ContextPolicy<unknown> | undefined = policy === undefined ? undefined : Object.freeze({
+      maxBytes: policy.maxBytes,
+      fields: Object.freeze(policy.fields.map((field) => Object.freeze({
+        key: field.key,
+        authorize: (context: Parameters<typeof authorize>[0], input: unknown) => field.authorize(context, input as Input),
+        read: (context: Parameters<typeof authorize>[0], input: unknown) => field.read(context, input as Input),
+      }))),
+    });
     this.capabilities.set(key, Object.freeze({
+      ...(contextPolicy === undefined ? {} : { context: contextPolicy }),
       key,
       allowedRoles: Object.freeze([...capability.allowedRoles]),
       approval: approval.mode === "NONE"

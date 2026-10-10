@@ -132,6 +132,12 @@ enum CapabilityApprovalDecision {
   REJECTED
 }
 
+enum CapabilityApprovalPurpose {
+  CONTEXT_PREPARATION
+  GENERATION
+  EXECUTION
+}
+
 model Company {
   id        String        @id @default(uuid())
   name      String
@@ -157,6 +163,8 @@ model Company {
   workflowRuns         WorkflowRun[]
   workflowSteps        WorkflowStep[]
   capabilityApprovals  CapabilityApproval[]
+  aiBudgetPolicies     AiBudgetPolicy[]
+  aiUsageAttempts      AiUsageAttempt[]
 
   @@map("companies")
 }
@@ -530,6 +538,7 @@ model CapabilityApproval {
   requestedByUserId String                     @map("requested_by_user_id")
   capabilityKey     String                     @map("capability_key")
   inputHash         String                     @map("input_hash")
+  purpose           CapabilityApprovalPurpose?
   status            CapabilityApprovalStatus   @default(PENDING)
   decision          CapabilityApprovalDecision?
   decidedByUserId   String?                    @map("decided_by_user_id")
@@ -545,4 +554,76 @@ model CapabilityApproval {
   @@index([companyId, status])
   @@index([companyId, requestedByUserId])
   @@map("capability_approvals")
+}
+
+enum AiUsageStatus {
+  RESERVED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model AiBudgetPolicy {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  periodKey           String   @map("period_key")
+  periodStart         DateTime @map("period_start")
+  periodEnd           DateTime @map("period_end")
+  currency            String
+  enabled             Boolean  @default(false)
+  tokenLimit          BigInt   @map("token_limit")
+  costLimitMicros     BigInt   @map("cost_limit_micros")
+  maxConcurrent       Int      @map("max_concurrent")
+  reservedTokens      BigInt   @default(0) @map("reserved_tokens")
+  spentTokens         BigInt   @default(0) @map("spent_tokens")
+  reservedCostMicros  BigInt   @default(0) @map("reserved_cost_micros")
+  spentCostMicros     BigInt   @default(0) @map("spent_cost_micros")
+  activeReservations  Int      @default(0) @map("active_reservations")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  attempts AiUsageAttempt[]
+
+  @@unique([companyId, periodKey])
+  @@unique([id, companyId])
+  @@index([companyId, periodStart, periodEnd])
+  @@map("ai_budget_policies")
+}
+
+model AiUsageAttempt {
+  id                  String        @id @default(uuid())
+  companyId           String        @map("company_id")
+  userId              String        @map("user_id")
+  budgetId            String        @map("budget_id")
+  operationId         String        @map("operation_id")
+  attemptNumber       Int           @map("attempt_number")
+  requestHash         String        @map("request_hash")
+  settlementHash      String?       @map("settlement_hash")
+  correlationId       String        @map("correlation_id")
+  modelClass          String        @map("model_class")
+  logicalModel        String        @map("logical_model")
+  capabilityKey       String        @map("capability_key")
+  workflowRunId       String?       @map("workflow_run_id")
+  workflowStepId      String?       @map("workflow_step_id")
+  status              AiUsageStatus @default(RESERVED)
+  maxInputTokens      BigInt        @map("max_input_tokens")
+  maxOutputTokens     BigInt        @map("max_output_tokens")
+  reservedCostMicros  BigInt        @map("reserved_cost_micros")
+  estimatedCostMicros BigInt?       @map("estimated_cost_micros")
+  inputTokens         BigInt?       @map("input_tokens")
+  outputTokens        BigInt?       @map("output_tokens")
+  actualCostMicros    BigInt?       @map("actual_cost_micros")
+  chargedTokens       BigInt?       @map("charged_tokens")
+  chargedCostMicros   BigInt?       @map("charged_cost_micros")
+  latencyMs           Int?          @map("latency_ms")
+  completedAt         DateTime?     @map("completed_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  budget  AiBudgetPolicy @relation(fields: [budgetId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@unique([companyId, operationId, attemptNumber])
+  @@index([companyId, status, createdAt])
+  @@map("ai_usage_attempts")
 }

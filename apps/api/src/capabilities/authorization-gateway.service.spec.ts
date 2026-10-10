@@ -1,3 +1,4 @@
+import { ProcessObservabilityService } from "../observability/process-observability.service";
 import { CompanyUserRole } from "@prisma/client";
 import { PrismaService } from "@plataforma/database";
 import { AuthorizationGateway } from "./authorization-gateway.service";
@@ -7,11 +8,14 @@ import { HumanApprovalService } from "./human-approval.service";
 import { createHash } from "node:crypto";
 import { serialize } from "node:v8";
 
+const observability = { record: jest.fn().mockResolvedValue(undefined) } as unknown as ProcessObservabilityService;
+
 describe("Capability Registry + Authorization Gateway", () => {
   const context: CapabilityContext = {
     companyId: "company-a",
     userId: "user-a",
     sessionId: "session-a",
+    correlationId: "correlation-a",
   };
   const request = { capability: "example.read", input: { id: "resource-a" } };
   let registry: CapabilityRegistry;
@@ -22,6 +26,7 @@ describe("Capability Registry + Authorization Gateway", () => {
   let capability: Capability<{ id: string }, { id: string }>;
 
   beforeEach(() => {
+    jest.mocked(observability.record).mockClear();
     registry = new CapabilityRegistry();
     findFirst = jest.fn().mockResolvedValue({ role: CompanyUserRole.MEMBER });
     authorize = jest.fn().mockResolvedValue(true);
@@ -39,7 +44,7 @@ describe("Capability Registry + Authorization Gateway", () => {
     const prisma = {
       companyUser: { findFirst },
     } as unknown as PrismaService;
-    gateway = new AuthorizationGateway(registry, prisma, new HumanApprovalService(prisma, registry));
+    gateway = new AuthorizationGateway(registry, prisma, new HumanApprovalService(prisma, registry), observability);
   });
 
   it("starts empty and denies unknown capabilities without execution", async () => {
@@ -216,7 +221,7 @@ describe("Capability Registry + Authorization Gateway", () => {
     });
     const humanApproval = new HumanApprovalService(prisma, registry);
     const gate = jest.spyOn(humanApproval, "gate");
-    const protectedGateway = new AuthorizationGateway(registry, prisma, humanApproval);
+    const protectedGateway = new AuthorizationGateway(registry, prisma, humanApproval, observability);
     expect(await protectedGateway.execute(context, {
       capability: request.capability,
       input: original,
@@ -283,4 +288,41 @@ describe("Capability Registry + Authorization Gateway", () => {
       .toEqual({ success: false, error: "DENIED" });
     expect(execute).not.toHaveBeenCalled();
   });
+  it("records tenant and propagated correlation without sensitive capability payloads", async () => {
+    registry.register(capability);
+    await gateway.execute(context, request);
+    expect(observability.record).toHaveBeenCalledTimes(1);
+    expect(observability.record).toHaveBeenCalledWith({
+      companyId: "company-a", correlationId: "correlation-a", operation: "capability.execute",
+      capabilityKey: "example.read", startedAt: expect.any(Date), completedAt: expect.any(Date), result: "SUCCESS",
+    });
+  });
+
+  it("records execution failure with a controlled code", async () => {
+    registry.register(capability);
+    execute.mockRejectedValue(new Error("secret credential"));
+    await gateway.execute(context, request);
+    expect(observability.record).toHaveBeenCalledWith(expect.objectContaining({
+      result: "FAILURE", errorCode: "EXECUTION_FAILED",
+    }));
+    expect(JSON.stringify(jest.mocked(observability.record).mock.calls)).not.toContain("secret credential");
+  });
+
+  it("records denied attempts without executing capabilities", async () => {
+    await gateway.execute(context, request);
+    expect(observability.record).toHaveBeenCalledWith(expect.objectContaining({
+      companyId: "company-a", result: "DENIED", errorCode: "DENIED",
+    }));
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid correlation before authorization and execution", async () => {
+    registry.register(capability);
+    expect(await gateway.execute({ ...context, correlationId: " " }, request))
+      .toEqual({ success: false, error: "DENIED" });
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(observability.record).not.toHaveBeenCalled();
+  });
+
 });

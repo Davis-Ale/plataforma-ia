@@ -1,3 +1,4 @@
+import { ObservabilityModule } from "../observability/observability.module";
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "@plataforma/database";
 import { AuthorizationGateway } from "./authorization-gateway.service";
@@ -5,7 +6,7 @@ import { CapabilityRegistry } from "./capability-registry.service";
 import { HumanApprovalService } from "./human-approval.service";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, ObservabilityModule],
   providers: [CapabilityRegistry, AuthorizationGateway, HumanApprovalService],
   exports: [CapabilityRegistry, AuthorizationGateway, HumanApprovalService],
 })

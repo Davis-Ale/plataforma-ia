@@ -1,9 +1,16 @@
+import type { ContextPolicy } from "../context-engine/context.types";
+
 export type CapabilityRole = "OWNER" | "ADMIN" | "MEMBER";
+
+export type ApprovalPurpose = "CONTEXT_PREPARATION" | "GENERATION" | "EXECUTION";
+
+export type CapabilityApprovalRequest = CapabilityRequest & Readonly<{ purpose: ApprovalPurpose }>;
 
 export type CapabilityContext = Readonly<{
   companyId: string;
   userId: string;
   sessionId: string;
+  correlationId?: string;
 }>;
 
 export type AuthorizedCapabilityContext = CapabilityContext & Readonly<{
@@ -25,6 +32,7 @@ export type CapabilityResult<Output = unknown> =
     };
 
 export type Capability<Input = unknown, Output = unknown> = Readonly<{
+  context?: ContextPolicy<Input>;
   key: string;
   allowedRoles: readonly CapabilityRole[];
   approval?:

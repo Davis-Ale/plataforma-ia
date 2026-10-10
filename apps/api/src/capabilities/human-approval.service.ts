@@ -11,7 +11,7 @@ import { PrismaService } from "@plataforma/database";
 import { createHash } from "node:crypto";
 import { serialize } from "node:v8";
 import { CapabilityRegistry } from "./capability-registry.service";
-import { CapabilityContext, CapabilityRequest } from "./capability.types";
+import { ApprovalPurpose, CapabilityApprovalRequest, CapabilityContext } from "./capability.types";
 import { createImmutableInput } from "./immutable-input";
 
 type GateResult =
@@ -30,9 +30,9 @@ export class HumanApprovalService {
     private readonly registry: CapabilityRegistry,
   ) {}
 
-  async gate(context: CapabilityContext, request: CapabilityRequest): Promise<GateResult> {
+  async gate(context: CapabilityContext, request: CapabilityApprovalRequest): Promise<GateResult> {
     try {
-      if (!this.validContext(context)) {
+      if (!this.validContext(context) || !request || !this.validPurpose(request.purpose)) {
         return { success: false, error: "DENIED" };
       }
       context = Object.freeze({ ...context });
@@ -61,6 +61,7 @@ export class HumanApprovalService {
               requestedByUserId: context.userId,
               capabilityKey: capability.key,
               inputHash,
+              purpose: request.purpose,
             },
           });
           await tx.auditLog.create({
@@ -70,7 +71,7 @@ export class HumanApprovalService {
               action: AuditAction.CREATE,
               resource: "capability_approval",
               resourceId: created.id,
-              metadata: { capability: capability.key, status: "PENDING" },
+              metadata: { capability: capability.key, purpose: request.purpose, status: "PENDING" },
             },
           });
           return created;
@@ -88,6 +89,7 @@ export class HumanApprovalService {
           requestedByUserId: context.userId,
           capabilityKey: capability.key,
           inputHash,
+          purpose: request.purpose,
         };
         const approval = await tx.capabilityApproval.findFirst({ where: scope });
         if (approval?.status === CapabilityApprovalStatus.PENDING) {
@@ -123,7 +125,7 @@ export class HumanApprovalService {
             action: AuditAction.UPDATE,
             resource: "capability_approval",
             resourceId: approvalId,
-            metadata: { capability: capability.key, status: "CONSUMED" },
+            metadata: { capability: capability.key, purpose: request.purpose, status: "CONSUMED" },
           },
         });
         return undefined;
@@ -137,9 +139,10 @@ export class HumanApprovalService {
     context: CapabilityContext,
     approvalId: string,
     decision: CapabilityApprovalDecision,
+    purpose: ApprovalPurpose,
   ): Promise<DecisionResult> {
     try {
-      if (!this.validContext(context)) {
+      if (!this.validContext(context) || !this.validPurpose(purpose)) {
         return { success: false, error: "DENIED" };
       }
       context = Object.freeze({ ...context });
@@ -159,6 +162,7 @@ export class HumanApprovalService {
             id: approvalId,
             companyId: context.companyId,
             status: CapabilityApprovalStatus.PENDING,
+            purpose,
           },
         });
         const policy = approval && this.registry.resolve(approval.capabilityKey)?.approval;
@@ -173,6 +177,7 @@ export class HumanApprovalService {
             id: approvalId,
             companyId: context.companyId,
             status: CapabilityApprovalStatus.PENDING,
+            purpose,
           },
           data: {
             status: decision,
@@ -191,7 +196,7 @@ export class HumanApprovalService {
             action: AuditAction.UPDATE,
             resource: "capability_approval",
             resourceId: approvalId,
-            metadata: { capability: approval.capabilityKey, status: decision, decision },
+            metadata: { capability: approval.capabilityKey, purpose, status: decision, decision },
           },
         });
         return { success: true, status: decision };
@@ -233,5 +238,9 @@ export class HumanApprovalService {
       [context.companyId, context.userId, context.sessionId].every(
         (value) => typeof value === "string" && value.trim() !== "",
       );
+  }
+
+  private validPurpose(purpose: unknown): purpose is ApprovalPurpose {
+    return purpose === "CONTEXT_PREPARATION" || purpose === "GENERATION" || purpose === "EXECUTION";
   }
 }

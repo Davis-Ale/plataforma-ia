@@ -1,3 +1,8 @@
+import { randomUUID } from "node:crypto";
+import { prepareContext } from "../context-engine/context-engine";
+import { ContextRequest, PreparedContext } from "../context-engine/context.types";
+import { ProcessObservabilityService } from "../observability/process-observability.service";
+import { buildProcessObservation } from "../observability/process-observation";
 import { Injectable } from "@nestjs/common";
 import {
   CompanyStatus,
@@ -10,6 +15,7 @@ import { HumanApprovalService } from "./human-approval.service";
 import { createImmutableInput } from "./immutable-input";
 import {
   AuthorizedCapabilityContext,
+  ApprovalPurpose,
   CapabilityContext,
   CapabilityRequest,
   CapabilityResult,
@@ -21,11 +27,28 @@ export class AuthorizationGateway {
     private readonly registry: CapabilityRegistry,
     private readonly prisma: PrismaService,
     private readonly humanApproval: HumanApprovalService,
+    private readonly observability: ProcessObservabilityService,
   ) {}
 
   async execute(
     context: CapabilityContext,
     request: CapabilityRequest,
+  ): Promise<CapabilityResult> {
+    return this.run(context, request, "EXECUTION");
+  }
+
+  async prepareContext(context: CapabilityContext, request: ContextRequest): Promise<CapabilityResult<PreparedContext>> {
+    return this.run(context, request, "CONTEXT_PREPARATION") as Promise<CapabilityResult<PreparedContext>>;
+  }
+
+  async prepareGenerationContext(context: CapabilityContext, request: ContextRequest): Promise<CapabilityResult<PreparedContext>> {
+    return this.run(context, request, "GENERATION") as Promise<CapabilityResult<PreparedContext>>;
+  }
+
+  private async run(
+    context: CapabilityContext,
+    request: ContextRequest,
+    mode: ApprovalPurpose,
   ): Promise<CapabilityResult> {
     if (
       !context ||
@@ -38,15 +61,56 @@ export class AuthorizationGateway {
       return { success: false, error: "DENIED" };
     }
 
+    request = Object.freeze({ ...request });
+    const startedAt = new Date();
+    const correlationId = context.correlationId ?? randomUUID();
+    const operation = mode === "EXECUTION" ? "capability.execute" : "context.prepare";
+    try {
+      buildProcessObservation({
+        companyId: context.companyId, correlationId,
+        operation, capabilityKey: request.capability,
+        startedAt, completedAt: startedAt, result: "SUCCESS",
+      });
+    } catch {
+      return { success: false, error: "DENIED" };
+    }
     const trustedContext = Object.freeze({
       companyId: context.companyId,
       userId: context.userId,
       sessionId: context.sessionId,
+      correlationId,
     });
+    const result = await this.executeAuthorized(trustedContext, request, mode);
+    await this.observability.record({
+      companyId: trustedContext.companyId,
+      correlationId,
+      operation,
+      capabilityKey: request.capability,
+      startedAt,
+      completedAt: new Date(),
+      result: result.success ? "SUCCESS" : result.error === "DENIED" ? "DENIED"
+        : result.error === "APPROVAL_REQUIRED" ? "APPROVAL_REQUIRED" : "FAILURE",
+      ...(!result.success && result.error !== "APPROVAL_REQUIRED" ? { errorCode: result.error } : {}),
+    });
+    return result;
+  }
+
+  private async executeAuthorized(
+    trustedContext: CapabilityContext,
+    request: ContextRequest,
+    mode: ApprovalPurpose,
+  ): Promise<CapabilityResult> {
     const capability = this.registry.resolve(request.capability);
     const approvalId = request.approvalId;
     if (!capability || capability.allowedRoles.length === 0) {
       return { success: false, error: "DENIED" };
+    }
+    if (mode !== "EXECUTION" && !capability.context) {
+      return { success: false, error: "DENIED" };
+    }
+    if (mode !== "EXECUTION" && request.maxBytes !== undefined &&
+      (!Number.isSafeInteger(request.maxBytes) || request.maxBytes < 2)) {
+      return { success: false, error: "INVALID_INPUT" };
     }
 
     let authorizedContext: AuthorizedCapabilityContext;
@@ -91,6 +155,7 @@ export class AuthorizationGateway {
         capability: capability.key,
         input,
         approvalId,
+        purpose: mode,
       });
       if (gate !== undefined) {
         return gate;
@@ -100,6 +165,11 @@ export class AuthorizationGateway {
     }
 
     try {
+      if (mode !== "EXECUTION") {
+        return { success: true, output: await prepareContext(
+          authorizedContext, capability.key, input, capability.context!, request.maxBytes,
+        ) };
+      }
       return {
         success: true,
         output: await capability.execute(authorizedContext, input),

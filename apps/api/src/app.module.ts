@@ -20,6 +20,8 @@ import { RequestsModule } from "./requests/requests.module";
 import { UsersModule } from "./users/users.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
 import { CapabilitiesModule } from "./capabilities/capabilities.module";
+import { AiMeteringModule } from "./ai-metering/ai-metering.module";
+import { ProviderGatewayModule } from "./provider-gateway/provider-gateway.module";
 
 @Module({
   imports: [
@@ -47,6 +49,8 @@ import { CapabilitiesModule } from "./capabilities/capabilities.module";
     RequestsModule,
     WorkflowsModule,
     CapabilitiesModule,
+    AiMeteringModule,
+    ProviderGatewayModule,
   ],
 })
 export class AppModule {}

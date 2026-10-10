@@ -106,6 +106,7 @@ describe("WorkflowsService", () => {
         resource: "workflow",
         resourceId: workflowRunId,
         metadata: {
+          correlationId: workflowRunId,
           workflowKey: "sync-data",
           status: WorkflowStatus.PENDING,
         },
@@ -204,6 +205,7 @@ describe("WorkflowsService", () => {
         resource: "workflow",
         resourceId: workflowRunId,
         metadata: {
+          correlationId: workflowRunId,
           changedFields: ["status", "startedAt"],
         },
       }),
@@ -256,6 +258,7 @@ describe("WorkflowsService", () => {
     expect(auditService.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: {
+          correlationId: workflowRunId,
           workflowStepId,
           changedFields: ["status", "startedAt"],
         },
@@ -309,7 +312,9 @@ describe("WorkflowsService", () => {
     expect(auditService.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: {
+          correlationId: workflowRunId,
           workflowStepId,
+          observation: expect.objectContaining({ correlationId: workflowRunId, workflowStepId }),
           changedFields: [
             "status",
             "output",
@@ -353,7 +358,9 @@ describe("WorkflowsService", () => {
     expect(auditService.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: {
+          correlationId: workflowRunId,
           workflowStepId,
+          observation: expect.objectContaining({ correlationId: workflowRunId, workflowStepId }),
           changedFields: [
             "status",
             "error",
@@ -380,13 +387,13 @@ describe("WorkflowsService", () => {
     const runningRun = {
       ...sampleRun,
       status: WorkflowStatus.RUNNING,
-      startedAt: new Date(),
+      startedAt: new Date("2026-10-07T10:00:00.000Z"),
     };
     const completedRun = {
       ...runningRun,
       status: WorkflowStatus.COMPLETED,
       output: { done: true },
-      completedAt: new Date(),
+      completedAt: new Date("2026-10-07T10:00:02.000Z"),
     };
 
     repository.findRun
@@ -404,6 +411,14 @@ describe("WorkflowsService", () => {
     );
 
     expect(result.status).toBe(WorkflowStatus.COMPLETED);
+    expect(auditService.create).toHaveBeenCalledTimes(1);
+    expect(auditService.create).toHaveBeenCalledWith(expect.objectContaining({
+      companyId,
+      metadata: expect.objectContaining({ observation: expect.objectContaining({
+        correlationId: workflowRunId, workflowKey: "sync-data", workflowRunId,
+        durationMs: 2000, result: "SUCCESS", success: true, outcomes: {},
+      }) }),
+    }));
   });
 
   it("fails a RUNNING run", async () => {

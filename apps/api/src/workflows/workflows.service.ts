@@ -1,3 +1,5 @@
+import { buildProcessObservation } from "../observability/process-observation";
+import { WorkflowRun, WorkflowStep } from "@prisma/client";
 import { Injectable } from "@nestjs/common";
 import {
   AuditAction,
@@ -33,6 +35,7 @@ export class WorkflowsService {
       resource: "workflow",
       resourceId: run.id,
       metadata: {
+        correlationId: run.id,
         workflowKey: run.workflowKey,
         status: run.status,
       },
@@ -126,6 +129,7 @@ export class WorkflowsService {
       workflowRunId,
       step.id,
       updateData,
+      step,
     );
 
     return step;
@@ -155,6 +159,7 @@ export class WorkflowsService {
       workflowRunId,
       step.id,
       updateData,
+      step,
     );
 
     return step;
@@ -181,6 +186,7 @@ export class WorkflowsService {
       companyId,
       run.id,
       updateData,
+      run,
     );
 
     return run;
@@ -207,6 +213,7 @@ export class WorkflowsService {
       companyId,
       run.id,
       updateData,
+      run,
     );
 
     return run;
@@ -230,6 +237,7 @@ export class WorkflowsService {
       companyId,
       run.id,
       updateData,
+      run,
     );
 
     return run;
@@ -239,6 +247,7 @@ export class WorkflowsService {
     companyId: string,
     workflowRunId: string,
     data: Record<string, unknown>,
+    record?: WorkflowRun,
   ) {
     await this.auditService.create({
       companyId,
@@ -246,6 +255,8 @@ export class WorkflowsService {
       resource: "workflow",
       resourceId: workflowRunId,
       metadata: {
+        correlationId: workflowRunId,
+        ...(record ? { observation: this.observeWorkflow(record) } : {}),
         changedFields: Object.keys(data).filter(
           (key) => data[key] !== undefined,
         ),
@@ -258,6 +269,7 @@ export class WorkflowsService {
     workflowRunId: string,
     workflowStepId: string,
     data: Record<string, unknown>,
+    record?: WorkflowStep,
   ) {
     await this.auditService.create({
       companyId,
@@ -265,11 +277,29 @@ export class WorkflowsService {
       resource: "workflow",
       resourceId: workflowRunId,
       metadata: {
+        correlationId: workflowRunId,
         workflowStepId,
+        ...(record ? { observation: this.observeWorkflow(record) } : {}),
         changedFields: Object.keys(data).filter(
           (key) => data[key] !== undefined,
         ),
       },
     });
   }
+  private observeWorkflow(record: WorkflowRun | WorkflowStep) {
+    const workflowRunId = "workflowRunId" in record ? record.workflowRunId : record.id;
+    return buildProcessObservation({
+      companyId: record.companyId,
+      correlationId: workflowRunId,
+      operation: "workflowRunId" in record ? "workflow.step" : "workflow.run",
+      workflowRunId,
+      ...("workflowRunId" in record ? { workflowStepId: record.id } : { workflowKey: record.workflowKey }),
+      startedAt: record.startedAt ?? record.createdAt,
+      completedAt: record.completedAt ?? record.updatedAt,
+      result: record.status === "COMPLETED" ? "SUCCESS"
+        : record.status === "CANCELLED" ? "CANCELLED" : "FAILURE",
+      ...(record.status === "FAILED" ? { errorCode: "WORKFLOW_FAILED" as const } : {}),
+    });
+  }
+
 }

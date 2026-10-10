@@ -1,3 +1,4 @@
+import { ProcessObservabilityService } from "../observability/process-observability.service";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -9,6 +10,8 @@ import { Capability, CapabilityContext } from "./capability.types";
 import { HumanApprovalService } from "./human-approval.service";
 
 jest.setTimeout(20000);
+
+const observability = { record: jest.fn().mockResolvedValue(undefined) } as unknown as ProcessObservabilityService;
 
 describe("Human Approval PostgreSQL gate", () => {
   const prisma = new PrismaService();
@@ -81,7 +84,7 @@ describe("Human Approval PostgreSQL gate", () => {
     };
     registry.register(capability);
     approval = new HumanApprovalService(prisma, registry);
-    gateway = new AuthorizationGateway(registry, prisma, approval);
+    gateway = new AuthorizationGateway(registry, prisma, approval, observability);
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -106,7 +109,7 @@ describe("Human Approval PostgreSQL gate", () => {
 
   async function approved() {
     const approvalId = await pending();
-    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED))
+    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED, "EXECUTION"))
       .toEqual({ success: true, status: "APPROVED" });
     return approvalId;
   }
@@ -132,19 +135,19 @@ describe("Human Approval PostgreSQL gate", () => {
       .toMatchObject({ status: "CONSUMED", decision: "APPROVED", decidedByUserId: approver.userId, decidedAt: expect.any(Date) });
     const audit = await prisma.auditLog.findMany({ where: { companyId, resourceId: approvalId }, orderBy: { createdAt: "asc" } });
     expect(audit.map((entry) => entry.metadata)).toEqual([
-      { capability: request.capability, status: "PENDING" },
-      { capability: request.capability, status: "APPROVED", decision: "APPROVED" },
-      { capability: request.capability, status: "CONSUMED" },
+      { capability: request.capability, purpose: "EXECUTION", status: "PENDING" },
+      { capability: request.capability, purpose: "EXECUTION", status: "APPROVED", decision: "APPROVED" },
+      { capability: request.capability, purpose: "EXECUTION", status: "CONSUMED" },
     ]);
   });
 
   it("records rejection and prevents execution or later decision changes", async () => {
     const approvalId = await pending();
-    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.REJECTED))
+    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.REJECTED, "EXECUTION"))
       .toEqual({ success: true, status: "REJECTED" });
     expect(await gateway.execute(requester, { ...request, approvalId }))
       .toEqual({ success: false, error: "DENIED" });
-    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED))
+    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED, "EXECUTION"))
       .toEqual({ success: false, error: "DENIED" });
     expect(execute).not.toHaveBeenCalled();
   });
@@ -154,14 +157,14 @@ describe("Human Approval PostgreSQL gate", () => {
     for (const actor of [
       requester, { ...approver, companyId: "" }, { ...approver, companyId: otherCompanyId },
     ]) {
-      expect(await approval.decide(actor, approvalId, CapabilityApprovalDecision.APPROVED))
+      expect(await approval.decide(actor, approvalId, CapabilityApprovalDecision.APPROVED, "EXECUTION"))
         .toEqual({ success: false, error: "DENIED" });
     }
     await prisma.companyUser.updateMany({ where: { companyId, userId: approver.userId }, data: { role: "MEMBER" } });
-    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED))
+    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED, "EXECUTION"))
       .toEqual({ success: false, error: "DENIED" });
     await prisma.authSession.updateMany({ where: { id: approver.sessionId }, data: { revokedAt: new Date() } });
-    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.REJECTED))
+    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.REJECTED, "EXECUTION"))
       .toEqual({ success: false, error: "DENIED" });
     expect(execute).not.toHaveBeenCalled();
   });
@@ -174,7 +177,7 @@ describe("Human Approval PostgreSQL gate", () => {
       approval: { mode: "REQUIRED", approverRoles: ["MEMBER", "ADMIN"] },
     });
     const selfService = new HumanApprovalService(prisma, selfRegistry);
-    expect(await selfService.decide(requester, approvalId, CapabilityApprovalDecision.APPROVED))
+    expect(await selfService.decide(requester, approvalId, CapabilityApprovalDecision.APPROVED, "EXECUTION"))
       .toEqual({ success: false, error: "DENIED" });
   });
 
@@ -204,7 +207,7 @@ describe("Human Approval PostgreSQL gate", () => {
     await prisma.companyUser.updateMany({ where: { companyId, userId: requester.userId }, data: { status: "ACTIVE" } });
     const deniedRegistry = new CapabilityRegistry();
     deniedRegistry.register({ ...registry.resolve(request.capability)!, authorize: async () => false });
-    const deniedGateway = new AuthorizationGateway(deniedRegistry, prisma, new HumanApprovalService(prisma, deniedRegistry));
+    const deniedGateway = new AuthorizationGateway(deniedRegistry, prisma, new HumanApprovalService(prisma, deniedRegistry), observability);
     expect(await deniedGateway.execute(requester, { ...request, approvalId }))
       .toEqual({ success: false, error: "DENIED" });
     expect(execute).not.toHaveBeenCalled();
@@ -233,8 +236,8 @@ describe("Human Approval PostgreSQL gate", () => {
   it("allows only one concurrent approve/reject decision", async () => {
     const approvalId = await pending();
     const results = await Promise.all([
-      approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED),
-      approval.decide(approver, approvalId, CapabilityApprovalDecision.REJECTED),
+      approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED, "EXECUTION"),
+      approval.decide(approver, approvalId, CapabilityApprovalDecision.REJECTED, "EXECUTION"),
     ]);
     expect(results.filter((result) => result.success)).toHaveLength(1);
     expect(await prisma.auditLog.count({ where: { companyId, resourceId: approvalId, action: "UPDATE" } })).toBe(1);
@@ -263,7 +266,7 @@ describe("Human Approval PostgreSQL gate", () => {
         return operation(tx);
       });
     });
-    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED))
+    expect(await approval.decide(approver, approvalId, CapabilityApprovalDecision.APPROVED, "EXECUTION"))
       .toEqual({ success: false, error: "DENIED" });
     expect(await prisma.capabilityApproval.findUnique({ where: { id: approvalId } }))
       .toMatchObject({ status: "PENDING", decision: null, decidedByUserId: null });
