@@ -5,6 +5,7 @@ import { PassportStrategy } from "@nestjs/passport";
 import { PrismaService } from "@plataforma/database";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { AuthSessionService } from "../auth-session.service";
+import { AuthenticatedRequest } from "../types/authenticated-request";
 import { JwtPayload } from "../types/jwt-payload";
 
 @Injectable()
@@ -18,10 +19,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: configService.getOrThrow<string>("JWT_SECRET"),
+      passReqToCallback: true,
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(request: AuthenticatedRequest, payload: JwtPayload) {
     const validPayload =
       payload.type === "access" &&
       payload.sessionId.trim().length > 0;
@@ -74,6 +76,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException("Invalid token");
     }
 
+    request.sessionId = payload.sessionId;
     return user;
   }
 }
