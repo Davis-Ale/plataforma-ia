@@ -22,6 +22,8 @@ import { WorkflowsModule } from "./workflows/workflows.module";
 import { CapabilitiesModule } from "./capabilities/capabilities.module";
 import { AiMeteringModule } from "./ai-metering/ai-metering.module";
 import { ProviderGatewayModule } from "./provider-gateway/provider-gateway.module";
+import { IntegrationsModule } from "./integrations/integrations.module";
+import { ScenariosModule } from "./scenarios/scenarios.module";
 
 @Module({
   imports: [
@@ -51,6 +53,8 @@ import { ProviderGatewayModule } from "./provider-gateway/provider-gateway.modul
     CapabilitiesModule,
     AiMeteringModule,
     ProviderGatewayModule,
+    IntegrationsModule,
+    ScenariosModule,
   ],
 })
 export class AppModule {}
