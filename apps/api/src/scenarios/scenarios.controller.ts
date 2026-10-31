@@ -39,6 +39,7 @@ export class ScenariosController {
       },
       {
         contractExternalRef: data.contractExternalRef,
+        operationId: data.operationId,
       },
     );
   }

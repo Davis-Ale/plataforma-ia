@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import {
   CreateWorkflowStepData,
+  WorkflowExecutionIdentity,
   WorkflowsService as WorkflowsEngineService,
 } from "@plataforma/workflows";
 import { AuditService } from "../audit/audit.service";
@@ -21,27 +22,31 @@ export class WorkflowsService {
   async createRun(
     companyId: string,
     workflowKey: string,
-    input?: Prisma.InputJsonValue,
+    input: Prisma.InputJsonValue | undefined,
+    identity: WorkflowExecutionIdentity,
   ) {
-    const run = await this.workflowsEngine.createRun(
+    const result = await this.workflowsEngine.createRun(
       companyId,
       workflowKey,
       input,
+      identity,
     );
 
-    await this.auditService.create({
-      companyId,
-      action: AuditAction.CREATE,
-      resource: "workflow",
-      resourceId: run.id,
-      metadata: {
-        correlationId: run.id,
-        workflowKey: run.workflowKey,
-        status: run.status,
-      },
-    });
+    if (result.created) {
+      await this.auditService.create({
+        companyId,
+        action: AuditAction.CREATE,
+        resource: "workflow",
+        resourceId: result.run.id,
+        metadata: {
+          correlationId: result.run.correlationId,
+          workflowKey: result.run.workflowKey,
+          status: result.run.status,
+        },
+      });
+    }
 
-    return run;
+    return result;
   }
 
   async createStep(
@@ -249,14 +254,19 @@ export class WorkflowsService {
     data: Record<string, unknown>,
     record?: WorkflowRun,
   ) {
+    const correlationId = await this.resolveCorrelationId(
+      companyId,
+      workflowRunId,
+      record,
+    );
     await this.auditService.create({
       companyId,
       action: AuditAction.UPDATE,
       resource: "workflow",
       resourceId: workflowRunId,
       metadata: {
-        correlationId: workflowRunId,
-        ...(record ? { observation: this.observeWorkflow(record) } : {}),
+        correlationId,
+        ...(record ? { observation: this.observeWorkflow(record, correlationId) } : {}),
         changedFields: Object.keys(data).filter(
           (key) => data[key] !== undefined,
         ),
@@ -271,26 +281,46 @@ export class WorkflowsService {
     data: Record<string, unknown>,
     record?: WorkflowStep,
   ) {
+    const correlationId = await this.resolveCorrelationId(
+      companyId,
+      workflowRunId,
+    );
     await this.auditService.create({
       companyId,
       action: AuditAction.UPDATE,
       resource: "workflow",
       resourceId: workflowRunId,
       metadata: {
-        correlationId: workflowRunId,
+        correlationId,
         workflowStepId,
-        ...(record ? { observation: this.observeWorkflow(record) } : {}),
+        ...(record ? { observation: this.observeWorkflow(record, correlationId) } : {}),
         changedFields: Object.keys(data).filter(
           (key) => data[key] !== undefined,
         ),
       },
     });
   }
-  private observeWorkflow(record: WorkflowRun | WorkflowStep) {
+
+  private async resolveCorrelationId(
+    companyId: string,
+    workflowRunId: string,
+    record?: WorkflowRun,
+  ) {
+    if (record !== undefined) {
+      return record.correlationId;
+    }
+    const run = await this.workflowsEngine.getRun(companyId, workflowRunId);
+    return run.correlationId;
+  }
+
+  private observeWorkflow(
+    record: WorkflowRun | WorkflowStep,
+    correlationId: string,
+  ) {
     const workflowRunId = "workflowRunId" in record ? record.workflowRunId : record.id;
     return buildProcessObservation({
       companyId: record.companyId,
-      correlationId: workflowRunId,
+      correlationId,
       operation: "workflowRunId" in record ? "workflow.step" : "workflow.run",
       workflowRunId,
       ...("workflowRunId" in record ? { workflowStepId: record.id } : { workflowKey: record.workflowKey }),

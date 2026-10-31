@@ -52,7 +52,14 @@ describe("Workflows PostgreSQL concurrency", () => {
 
   async function run(status: WorkflowStatus) {
     return prisma.workflowRun.create({
-      data: { companyId, workflowKey: "concurrency-test", status },
+      data: {
+        companyId,
+        workflowKey: "concurrency-test",
+        status,
+        operationId: randomUUID(),
+        correlationId: randomUUID(),
+        requestHash: "concurrency-test-hash",
+      },
     });
   }
 

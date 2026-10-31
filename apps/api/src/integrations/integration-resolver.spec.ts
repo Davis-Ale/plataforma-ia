@@ -271,7 +271,7 @@ describe("Integration resolution and generic capabilities", () => {
     const service = moduleRef.get(PrepareOperationService);
     const result = await service.run(
       { companyId: "company-a", userId: "u1", sessionId: "s1" },
-      { contractExternalRef: "ATLAS" },
+      { contractExternalRef: "ATLAS", operationId: "op-atlas" },
     );
 
     expect(result.success).toBe(false);
@@ -321,7 +321,7 @@ describe("Integration resolution and generic capabilities", () => {
     const service = moduleRef.get(PrepareOperationService);
     const result = await service.run(
       { companyId: "company-a", userId: "u1", sessionId: "s1" },
-      { contractExternalRef: "" },
+      { contractExternalRef: "", operationId: "op-atlas" },
     );
 
     expect(result.success).toBe(false);

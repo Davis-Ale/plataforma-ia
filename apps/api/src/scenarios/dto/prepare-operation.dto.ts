@@ -9,4 +9,9 @@ export class PrepareOperationDto {
   @MinLength(1)
   @MaxLength(255)
   declare contractExternalRef: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  declare operationId: string;
 }

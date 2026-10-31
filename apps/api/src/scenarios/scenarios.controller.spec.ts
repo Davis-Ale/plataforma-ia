@@ -101,7 +101,7 @@ describe("ScenariosController", () => {
     const response = await request(app.getHttpServer())
       .post(path)
       .set("X-Company-Id", companyId)
-      .send({ contractExternalRef: "ATLAS" });
+      .send({ contractExternalRef: "ATLAS", operationId: "op-atlas" });
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual(successResult);
@@ -113,6 +113,7 @@ describe("ScenariosController", () => {
       },
       {
         contractExternalRef: "ATLAS",
+        operationId: "op-atlas",
       },
     );
   });
@@ -121,7 +122,7 @@ describe("ScenariosController", () => {
     const empty = await request(app.getHttpServer())
       .post(path)
       .set("X-Company-Id", companyId)
-      .send({ contractExternalRef: "" });
+      .send({ contractExternalRef: "", operationId: "op-atlas" });
 
     expect(empty.status).toBe(400);
     expect(run).not.toHaveBeenCalled();
@@ -133,6 +134,14 @@ describe("ScenariosController", () => {
 
     expect(missing.status).toBe(400);
     expect(run).not.toHaveBeenCalled();
+
+    const missingOperation = await request(app.getHttpServer())
+      .post(path)
+      .set("X-Company-Id", companyId)
+      .send({ contractExternalRef: "ATLAS" });
+
+    expect(missingOperation.status).toBe(400);
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("does not trust companyId, userId or sessionId from the body", async () => {
@@ -141,6 +150,7 @@ describe("ScenariosController", () => {
       .set("X-Company-Id", companyId)
       .send({
         contractExternalRef: "ATLAS",
+        operationId: "op-atlas",
         companyId: otherCompanyId,
         userId: "user-b",
         sessionId: "session-b",
@@ -152,7 +162,7 @@ describe("ScenariosController", () => {
     const accepted = await request(app.getHttpServer())
       .post(path)
       .set("X-Company-Id", companyId)
-      .send({ contractExternalRef: "ORION" });
+      .send({ contractExternalRef: "ORION", operationId: "op-orion" });
 
     expect(accepted.status).toBe(201);
     expect(run).toHaveBeenCalledWith(
@@ -163,6 +173,7 @@ describe("ScenariosController", () => {
       },
       {
         contractExternalRef: "ORION",
+        operationId: "op-orion",
       },
     );
     expect(run.mock.calls[0][0]).not.toEqual(
@@ -187,7 +198,7 @@ describe("ScenariosController", () => {
     const response = await request(app.getHttpServer())
       .post(path)
       .set("X-Company-Id", companyId)
-      .send({ contractExternalRef: "ATLAS" });
+      .send({ contractExternalRef: "ATLAS", operationId: "op-atlas" });
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual(denied);

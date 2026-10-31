@@ -481,21 +481,25 @@ model Request {
 }
 
 model WorkflowRun {
-  id          String         @id @default(uuid())
-  companyId   String         @map("company_id")
-  workflowKey String         @map("workflow_key")
-  status      WorkflowStatus @default(PENDING)
-  input       Json?
-  output      Json?
-  error       String?
-  startedAt   DateTime?      @map("started_at")
-  completedAt DateTime?      @map("completed_at")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
+  id            String         @id @default(uuid())
+  companyId     String         @map("company_id")
+  workflowKey   String         @map("workflow_key")
+  status        WorkflowStatus @default(PENDING)
+  operationId   String         @map("operation_id")
+  correlationId String         @map("correlation_id")
+  requestHash   String         @map("request_hash")
+  input         Json?
+  output        Json?
+  error         String?
+  startedAt     DateTime?      @map("started_at")
+  completedAt   DateTime?      @map("completed_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
   company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   steps   WorkflowStep[]
 
+  @@unique([companyId, operationId])
   @@index([companyId, status])
   @@index([companyId, createdAt])
   @@map("workflow_runs")

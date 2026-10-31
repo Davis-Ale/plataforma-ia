@@ -182,7 +182,15 @@ describe("AI Metering + Budget Policy PostgreSQL", () => {
     const report = { reservationId, status: "COMPLETED" as const, latencyMs: 1 };
     expect(await service.settle(other, report)).toEqual({ recorded: false, reason: "DENIED" });
     expect(await service.settle(member, report)).toEqual({ recorded: false, reason: "DENIED" });
-    const run = await prisma.workflowRun.create({ data: { companyId: otherCompanyId, workflowKey: "test-metering" } });
+    const run = await prisma.workflowRun.create({
+      data: {
+        companyId: otherCompanyId,
+        workflowKey: "test-metering",
+        operationId: randomUUID(),
+        correlationId: randomUUID(),
+        requestHash: "test-metering-hash",
+      },
+    });
     expect(await service.reserve(context, request({ workflowRunId: run.id }))).toEqual({ allowed: false, reason: "DENIED" });
     expect(await prisma.aiUsageAttempt.findFirst({ where: { companyId, id: reservationId } })).toEqual(expect.objectContaining({ status: "RESERVED" }));
   });

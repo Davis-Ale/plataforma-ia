@@ -12,6 +12,9 @@ import { PrismaService } from "@plataforma/database";
 export type CreateWorkflowRunData = {
   workflowKey: string;
   input?: Prisma.InputJsonValue;
+  operationId: string;
+  correlationId: string;
+  requestHash: string;
 };
 
 export type CreateWorkflowStepData = {
@@ -51,7 +54,19 @@ export class WorkflowsRepository {
         companyId,
         workflowKey: data.workflowKey,
         input: data.input,
+        operationId: data.operationId,
+        correlationId: data.correlationId,
+        requestHash: data.requestHash,
         status: WorkflowStatus.PENDING,
+      },
+    });
+  }
+
+  findRunByOperationId(companyId: string, operationId: string) {
+    return this.prisma.workflowRun.findFirst({
+      where: {
+        companyId,
+        operationId,
       },
     });
   }

@@ -1,12 +1,17 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import {
   Prisma,
+  WorkflowRun,
   WorkflowStatus,
 } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+import { randomUUID } from "node:crypto";
+import { hashWorkflowRequest } from "./request-hash";
 import {
   CreateWorkflowStepData,
   UpdateWorkflowRunData,
@@ -14,24 +19,85 @@ import {
   WorkflowsRepository,
 } from "./workflows.repository";
 
+export type WorkflowExecutionIdentity = Readonly<{
+  operationId: string;
+  correlationId?: string;
+}>;
+
+export type CreateWorkflowRunResult = Readonly<{
+  run: WorkflowRun;
+  created: boolean;
+}>;
+
 @Injectable()
 export class WorkflowsService {
   constructor(
     private readonly workflowsRepository: WorkflowsRepository,
   ) {}
 
-  createRun(
+  async createRun(
     companyId: string,
     workflowKey: string,
-    input?: Prisma.InputJsonValue,
-  ) {
-    return this.workflowsRepository.createRun(
+    input: Prisma.InputJsonValue | undefined,
+    identity: WorkflowExecutionIdentity,
+  ): Promise<CreateWorkflowRunResult> {
+    if (
+      typeof companyId !== "string" ||
+      companyId.trim() === "" ||
+      typeof workflowKey !== "string" ||
+      workflowKey.trim() === "" ||
+      !identity ||
+      typeof identity.operationId !== "string" ||
+      identity.operationId.trim() === "" ||
+      (identity.correlationId !== undefined &&
+        (typeof identity.correlationId !== "string" ||
+          identity.correlationId.trim() === ""))
+    ) {
+      throw new BadRequestException("Invalid workflow identity");
+    }
+
+    const operationId = identity.operationId.trim();
+    const requestHash = hashWorkflowRequest(workflowKey, input);
+    const existing = await this.workflowsRepository.findRunByOperationId(
       companyId,
-      {
+      operationId,
+    );
+    if (existing !== null) {
+      return this.reuseOrConflict(existing, workflowKey, requestHash);
+    }
+
+    try {
+      const run = await this.workflowsRepository.createRun(companyId, {
         workflowKey,
         input,
-      },
-    );
+        operationId,
+        correlationId:
+          identity.correlationId === undefined
+            ? randomUUID()
+            : identity.correlationId.trim(),
+        requestHash,
+      });
+      return { run, created: true };
+    } catch (error) {
+      if (
+        error instanceof PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const raced = await this.workflowsRepository.findRunByOperationId(
+          companyId,
+          operationId,
+        );
+        if (raced === null) {
+          throw new ConflictException("Workflow operation conflict");
+        }
+        return this.reuseOrConflict(raced, workflowKey, requestHash);
+      }
+      throw error;
+    }
+  }
+
+  getRun(companyId: string, workflowRunId: string) {
+    return this.findRunOrThrow(companyId, workflowRunId);
   }
 
   async createStep(
@@ -373,5 +439,19 @@ export class WorkflowsService {
       throw new BadRequestException("Workflow step cannot be transitioned");
     }
     return result.record;
+  }
+
+  private reuseOrConflict(
+    existing: WorkflowRun,
+    workflowKey: string,
+    requestHash: string,
+  ): CreateWorkflowRunResult {
+    if (
+      existing.workflowKey !== workflowKey ||
+      existing.requestHash !== requestHash
+    ) {
+      throw new ConflictException("Workflow operation conflict");
+    }
+    return { run: existing, created: false };
   }
 }

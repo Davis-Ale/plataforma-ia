@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { WorkflowRun, WorkflowStatus } from "@prisma/client";
 import { AuthorizationGateway } from "../capabilities/authorization-gateway.service";
 import { CapabilityContext } from "../capabilities/capability.types";
 import { CONTRACTS_READ_KEY } from "../integrations/contracts-read.capability";
@@ -10,6 +11,7 @@ export const PREPARE_OPERATION_WORKFLOW_KEY = "operations.prepare_from_contract"
 
 export type PrepareOperationInput = Readonly<{
   contractExternalRef: string;
+  operationId: string;
 }>;
 
 export type PrepareOperationResult =
@@ -36,7 +38,7 @@ export type PrepareOperationResult =
       success: false;
       companyId: string;
       workflowRunId?: string;
-      error: "DENIED" | "INVALID_INPUT" | "EXECUTION_FAILED" | "APPROVAL_REQUIRED";
+      error: "DENIED" | "INVALID_INPUT" | "EXECUTION_FAILED" | "EXECUTION_IN_PROGRESS" | "APPROVAL_REQUIRED";
       approvalId?: string;
       failedStep?: string;
       failedCapabilityKey?: string;
@@ -62,7 +64,9 @@ export class PrepareOperationService {
     if (
       !input ||
       typeof input.contractExternalRef !== "string" ||
-      input.contractExternalRef.trim() === ""
+      input.contractExternalRef.trim() === "" ||
+      typeof input.operationId !== "string" ||
+      input.operationId.trim() === ""
     ) {
       return { success: false, companyId: context.companyId, error: "INVALID_INPUT" };
     }
@@ -97,11 +101,23 @@ export class PrepareOperationService {
 
     const contractOutput = contractResult.output;
 
-    const run = await this.workflows.createRun(companyId, PREPARE_OPERATION_WORKFLOW_KEY, {
-      contractExternalRef: contractRef,
-      scenario: "new_contract",
-      areas: ["contracts", "operations", "people"],
-    });
+    const { run, created } = await this.workflows.createRun(
+      companyId,
+      PREPARE_OPERATION_WORKFLOW_KEY,
+      {
+        contractExternalRef: contractRef,
+        scenario: "new_contract",
+        areas: ["contracts", "operations", "people"],
+      },
+      {
+        operationId: input.operationId.trim(),
+        correlationId: context.correlationId,
+      },
+    );
+
+    if (!created) {
+      return this.fromExistingRun(companyId, run);
+    }
 
     const stepDefs = [
       {
@@ -253,6 +269,57 @@ export class PrepareOperationService {
       workflowKey: PREPARE_OPERATION_WORKFLOW_KEY,
       steps: Object.freeze(completed),
       output,
+    };
+  }
+
+  private fromExistingRun(
+    companyId: string,
+    run: WorkflowRun,
+  ): PrepareOperationResult {
+    if (run.status === WorkflowStatus.COMPLETED) {
+      const output = run.output;
+      if (
+        output === null ||
+        typeof output !== "object" ||
+        Array.isArray(output)
+      ) {
+        return {
+          success: false,
+          companyId,
+          workflowRunId: run.id,
+          error: "EXECUTION_FAILED",
+        };
+      }
+      const record = output as Record<string, unknown>;
+      return {
+        success: true,
+        companyId,
+        workflowRunId: run.id,
+        workflowKey: PREPARE_OPERATION_WORKFLOW_KEY,
+        steps: Object.freeze([]),
+        output: Object.freeze({
+          contract: record.contract,
+          plan: record.plan,
+          capacity: record.capacity,
+        }),
+      };
+    }
+    if (
+      run.status === WorkflowStatus.PENDING ||
+      run.status === WorkflowStatus.RUNNING
+    ) {
+      return {
+        success: false,
+        companyId,
+        workflowRunId: run.id,
+        error: "EXECUTION_IN_PROGRESS",
+      };
+    }
+    return {
+      success: false,
+      companyId,
+      workflowRunId: run.id,
+      error: "EXECUTION_FAILED",
     };
   }
 }

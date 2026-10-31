@@ -1,12 +1,15 @@
 import {
   BadRequestException,
+  ConflictException,
   NotFoundException,
 } from "@nestjs/common";
 import {
   AuditAction,
   WorkflowStatus,
 } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import {
+  hashWorkflowRequest,
   WorkflowsRepository,
   WorkflowsService as WorkflowsEngineService,
 } from "@plataforma/workflows";
@@ -26,12 +29,20 @@ describe("WorkflowsService", () => {
   const workflowStepId =
     "55555555-5555-4555-8555-555555555555";
 
+  const sampleOperationId = "op-sync-1";
+  const sampleCorrelationId = "corr-1";
+  const sampleInput = { source: "erp" };
+  const sampleHash = hashWorkflowRequest("sync-data", sampleInput);
+
   const sampleRun = {
     id: workflowRunId,
     companyId,
     workflowKey: "sync-data",
     status: WorkflowStatus.PENDING,
-    input: { source: "erp" },
+    operationId: sampleOperationId,
+    correlationId: sampleCorrelationId,
+    requestHash: sampleHash,
+    input: sampleInput,
     output: null,
     error: null,
     startedAt: null,
@@ -65,6 +76,7 @@ describe("WorkflowsService", () => {
     repository = {
       createRun: jest.fn(),
       findRun: jest.fn(),
+      findRunByOperationId: jest.fn().mockResolvedValue(null),
       updateRun: jest.fn(),
       createStep: jest.fn(),
       findStep: jest.fn(),
@@ -88,14 +100,25 @@ describe("WorkflowsService", () => {
     const result = await service.createRun(
       companyId,
       "sync-data",
-      { source: "erp" },
+      sampleInput,
+      {
+        operationId: sampleOperationId,
+        correlationId: sampleCorrelationId,
+      },
     );
 
+    expect(repository.findRunByOperationId).toHaveBeenCalledWith(
+      companyId,
+      sampleOperationId,
+    );
     expect(repository.createRun).toHaveBeenCalledWith(
       companyId,
       {
         workflowKey: "sync-data",
-        input: { source: "erp" },
+        input: sampleInput,
+        operationId: sampleOperationId,
+        correlationId: sampleCorrelationId,
+        requestHash: sampleHash,
       },
     );
 
@@ -106,14 +129,15 @@ describe("WorkflowsService", () => {
         resource: "workflow",
         resourceId: workflowRunId,
         metadata: {
-          correlationId: workflowRunId,
+          correlationId: sampleCorrelationId,
           workflowKey: "sync-data",
           status: WorkflowStatus.PENDING,
         },
       }),
     );
 
-    expect(result.status).toBe(WorkflowStatus.PENDING);
+    expect(result.created).toBe(true);
+    expect(result.run.status).toBe(WorkflowStatus.PENDING);
   });
 
   it("creates a step only for a run in the same tenant", async () => {
@@ -205,7 +229,7 @@ describe("WorkflowsService", () => {
         resource: "workflow",
         resourceId: workflowRunId,
         metadata: {
-          correlationId: workflowRunId,
+          correlationId: sampleCorrelationId,
           changedFields: ["status", "startedAt"],
         },
       }),
@@ -258,7 +282,7 @@ describe("WorkflowsService", () => {
     expect(auditService.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: {
-          correlationId: workflowRunId,
+          correlationId: sampleCorrelationId,
           workflowStepId,
           changedFields: ["status", "startedAt"],
         },
@@ -292,6 +316,10 @@ describe("WorkflowsService", () => {
       completedAt: new Date(),
     };
 
+    repository.findRun.mockResolvedValue({
+      ...sampleRun,
+      status: WorkflowStatus.RUNNING,
+    });
     repository.findStep
       .mockResolvedValueOnce(runningStep)
       .mockResolvedValueOnce(completedStep);
@@ -312,9 +340,9 @@ describe("WorkflowsService", () => {
     expect(auditService.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: {
-          correlationId: workflowRunId,
+          correlationId: sampleCorrelationId,
           workflowStepId,
-          observation: expect.objectContaining({ correlationId: workflowRunId, workflowStepId }),
+          observation: expect.objectContaining({ correlationId: sampleCorrelationId, workflowStepId }),
           changedFields: [
             "status",
             "output",
@@ -338,6 +366,10 @@ describe("WorkflowsService", () => {
       completedAt: new Date(),
     };
 
+    repository.findRun.mockResolvedValue({
+      ...sampleRun,
+      status: WorkflowStatus.RUNNING,
+    });
     repository.findStep
       .mockResolvedValueOnce(runningStep)
       .mockResolvedValueOnce(failedStep);
@@ -358,9 +390,9 @@ describe("WorkflowsService", () => {
     expect(auditService.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: {
-          correlationId: workflowRunId,
+          correlationId: sampleCorrelationId,
           workflowStepId,
-          observation: expect.objectContaining({ correlationId: workflowRunId, workflowStepId }),
+          observation: expect.objectContaining({ correlationId: sampleCorrelationId, workflowStepId }),
           changedFields: [
             "status",
             "error",
@@ -415,7 +447,7 @@ describe("WorkflowsService", () => {
     expect(auditService.create).toHaveBeenCalledWith(expect.objectContaining({
       companyId,
       metadata: expect.objectContaining({ observation: expect.objectContaining({
-        correlationId: workflowRunId, workflowKey: "sync-data", workflowRunId,
+        correlationId: sampleCorrelationId, workflowKey: "sync-data", workflowRunId,
         durationMs: 2000, result: "SUCCESS", success: true, outcomes: {},
       }) }),
     }));
@@ -648,6 +680,153 @@ describe("WorkflowsService", () => {
       WorkflowStatus.PENDING,
       WorkflowStatus.RUNNING,
     );
+    expect(auditService.create).not.toHaveBeenCalled();
+  });
+
+  it("returns the existing run for the same company operation and request hash", async () => {
+    repository.findRunByOperationId.mockResolvedValue(sampleRun);
+
+    const result = await service.createRun(
+      companyId,
+      "sync-data",
+      sampleInput,
+      { operationId: sampleOperationId },
+    );
+
+    expect(result).toEqual({ run: sampleRun, created: false });
+    expect(repository.createRun).not.toHaveBeenCalled();
+    expect(auditService.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the same operationId has a different request hash", async () => {
+    repository.findRunByOperationId.mockResolvedValue(sampleRun);
+
+    await expect(
+      service.createRun(
+        companyId,
+        "sync-data",
+        { source: "crm" },
+        { operationId: sampleOperationId },
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(repository.createRun).not.toHaveBeenCalled();
+    expect(auditService.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the same operationId has a different workflowKey", async () => {
+    repository.findRunByOperationId.mockResolvedValue(sampleRun);
+
+    await expect(
+      service.createRun(
+        companyId,
+        "other-workflow",
+        sampleInput,
+        { operationId: sampleOperationId },
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(repository.createRun).not.toHaveBeenCalled();
+  });
+
+  it("isolates the same operationId across tenants", async () => {
+    const otherRun = {
+      ...sampleRun,
+      id: "66666666-6666-4666-8666-666666666666",
+      companyId: otherCompanyId,
+    };
+    repository.createRun.mockResolvedValue(otherRun);
+
+    const result = await service.createRun(
+      otherCompanyId,
+      "sync-data",
+      sampleInput,
+      {
+        operationId: sampleOperationId,
+        correlationId: sampleCorrelationId,
+      },
+    );
+
+    expect(repository.findRunByOperationId).toHaveBeenCalledWith(
+      otherCompanyId,
+      sampleOperationId,
+    );
+    expect(repository.createRun).toHaveBeenCalledWith(
+      otherCompanyId,
+      expect.objectContaining({
+        operationId: sampleOperationId,
+        requestHash: sampleHash,
+      }),
+    );
+    expect(result.created).toBe(true);
+    expect(result.run.companyId).toBe(otherCompanyId);
+  });
+
+  it("hashes the same workflow request independently of object key order", async () => {
+    repository.createRun.mockResolvedValue(sampleRun);
+
+    await service.createRun(
+      companyId,
+      "sync-data",
+      { b: 2, a: 1 },
+      { operationId: "op-a" },
+    );
+    await service.createRun(
+      companyId,
+      "sync-data",
+      { a: 1, b: 2 },
+      { operationId: "op-b" },
+    );
+
+    expect(repository.createRun.mock.calls[0][1].requestHash).toBe(
+      repository.createRun.mock.calls[1][1].requestHash,
+    );
+    expect(repository.createRun.mock.calls[0][1].requestHash).toBe(
+      hashWorkflowRequest("sync-data", { a: 1, b: 2 }),
+    );
+  });
+
+  it("reuses the existing run after a unique constraint race", async () => {
+    repository.findRunByOperationId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(sampleRun);
+    repository.createRun.mockRejectedValue(
+      new PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "5.15.0",
+      }),
+    );
+
+    const result = await service.createRun(
+      companyId,
+      "sync-data",
+      sampleInput,
+      { operationId: sampleOperationId },
+    );
+
+    expect(result).toEqual({ run: sampleRun, created: false });
+    expect(auditService.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed after a unique constraint race with different content", async () => {
+    repository.findRunByOperationId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(sampleRun);
+    repository.createRun.mockRejectedValue(
+      new PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "5.15.0",
+      }),
+    );
+
+    await expect(
+      service.createRun(
+        companyId,
+        "sync-data",
+        { source: "crm" },
+        { operationId: sampleOperationId },
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(auditService.create).not.toHaveBeenCalled();
   });
 
