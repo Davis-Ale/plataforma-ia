@@ -80,6 +80,83 @@ export class WorkflowsRepository {
     });
   }
 
+  findRuns(
+    companyId: string,
+    status: WorkflowStatus | undefined,
+    skip: number,
+    take: number,
+  ) {
+    const where: Prisma.WorkflowRunWhereInput = {
+      companyId,
+      status,
+    };
+
+    return Promise.all([
+      this.prisma.workflowRun.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }],
+        skip,
+        take,
+        select: {
+          id: true,
+          workflowKey: true,
+          status: true,
+          operationId: true,
+          correlationId: true,
+          error: true,
+          startedAt: true,
+          completedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              steps: true,
+            },
+          },
+        },
+      }),
+      this.prisma.workflowRun.count({ where }),
+    ]);
+  }
+
+  findRunWithSteps(companyId: string, id: string) {
+    return this.prisma.workflowRun.findFirst({
+      where: {
+        id,
+        companyId,
+      },
+      select: {
+        id: true,
+        workflowKey: true,
+        status: true,
+        operationId: true,
+        correlationId: true,
+        error: true,
+        startedAt: true,
+        completedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        steps: {
+          orderBy: [
+            { stepOrder: "asc" },
+            { createdAt: "asc" },
+          ],
+          select: {
+            id: true,
+            stepKey: true,
+            stepOrder: true,
+            status: true,
+            error: true,
+            startedAt: true,
+            completedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+  }
+
   updateRun(
     companyId: string,
     id: string,

@@ -1,0 +1,42 @@
+name: Execution visibility validation
+
+on:
+  push:
+    branches: [feat/execution-visibility]
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "apps/api/src/workflows/**"
+      - "packages/workflows/src/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/execution-visibility.yml"
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Activate pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.4.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm db:generate
+      - name: Build internal packages
+        run: |
+          pnpm --filter @plataforma/database build
+          pnpm --filter @plataforma/auth build
+          pnpm --filter @plataforma/workflows build
+      - name: Check workflow tests
+        run: pnpm --filter @plataforma/api test -- workflows.service.spec.ts workflows.visibility.spec.ts workflows.controller.spec.ts
+      - name: Build API
+        run: pnpm --filter @plataforma/api build
+      - name: Check portal types
+        run: pnpm --filter @plataforma/web lint
+      - name: Build portal
+        run: pnpm --filter @plataforma/web build
