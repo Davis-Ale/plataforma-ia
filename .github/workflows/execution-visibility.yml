@@ -73,6 +73,19 @@ jobs:
         run: |
           export CHROME_BIN="$(command -v google-chrome)"
           test -n "$CHROME_BIN"
+          "$CHROME_BIN" --version
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-first-run --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/plataforma-browser" about:blank > "$RUNNER_TEMP/portal-chrome.log" 2>&1 &
+          browser_pid=$!
+          trap 'kill "$browser_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..100}; do
+            if curl --fail --silent http://127.0.0.1:9222/json/version > /dev/null; then break; fi
+            sleep 0.1
+          done
+          if ! curl --fail --silent http://127.0.0.1:9222/json/version; then
+            cat "$RUNNER_TEMP/portal-chrome.log"
+            exit 1
+          fi
+          export CHROME_DEBUGGING_PORT=9222
           pnpm --filter @plataforma/database exec prisma db push --skip-generate
           pnpm --filter @plataforma/api exec jest --config test/jest-portal-e2e.cjs --runInBand
       - name: Preserve portal inspection

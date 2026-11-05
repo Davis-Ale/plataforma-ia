@@ -1,39 +1,13 @@
-import { ChildProcess, spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 export class BrowserClient {
-  private process: ChildProcess | undefined;
-  private directory: string | undefined;
   private socket: WebSocket | undefined;
   private nextId = 0;
   private pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
 
   async start(url: string) {
-    const binary = process.env.CHROME_BIN;
-    if (!binary) throw new Error("CHROME_BIN is required");
-    this.directory = await mkdtemp(join(tmpdir(), "plataforma-browser-"));
-    let diagnostics = "";
-    this.process = spawn(binary, [
-      "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run",
-      "--no-default-browser-check", "--disable-background-networking", "--disable-extensions",
-      "--remote-debugging-port=0", `--user-data-dir=${this.directory}`, "about:blank",
-    ], { stdio: ["ignore", "ignore", "pipe"] });
-    this.process.stderr!.on("data", (chunk) => { diagnostics = (diagnostics + String(chunk)).slice(-12000); });
-    let launchError: Error | undefined;
-    this.process.on("error", (error) => { launchError = error; });
-    let port: string | undefined;
-    for (let attempt = 0; attempt < 100; attempt++) {
-      if (launchError) throw launchError;
-      if (this.process.exitCode !== null || this.process.signalCode !== null) throw new Error(`Browser exited during startup: ${diagnostics}`);
-      const active = await readFile(join(this.directory, "DevToolsActivePort"), "utf8").catch(() => "");
-      port = active.split("\n")[0] || diagnostics.match(/DevTools listening on ws:\/\/[^:]+:(\d+)/)?.[1];
-      if (port) break;
-      await delay(100);
-    }
-    if (!port) throw new Error(`Browser debugging port unavailable: ${diagnostics}`);
+    const port = process.env.CHROME_DEBUGGING_PORT;
+    if (!port || !/^\d+$/.test(port)) throw new Error("CHROME_DEBUGGING_PORT is required");
     const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json()) as Array<{ type: string; webSocketDebuggerUrl: string }>;
     const target = targets.find((item) => item.type === "page");
     if (!target) throw new Error("Browser page unavailable");
@@ -95,11 +69,5 @@ export class BrowserClient {
 
   async close() {
     this.socket?.close();
-    this.process?.kill("SIGTERM");
-    if (this.process && this.process.exitCode === null) {
-      await Promise.race([new Promise<void>((resolve) => this.process!.once("exit", () => resolve())), delay(2000, undefined, { ref: false })]);
-      if (this.process.exitCode === null) this.process.kill("SIGKILL");
-    }
-    if (this.directory) await rm(this.directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 }
