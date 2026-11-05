@@ -19,6 +19,7 @@ import {
   CapabilityContext,
   CapabilityRequest,
   CapabilityResult,
+  CapabilityRole,
 } from "./capability.types";
 
 @Injectable()
@@ -43,6 +44,38 @@ export class AuthorizationGateway {
 
   async prepareGenerationContext(context: CapabilityContext, request: ContextRequest): Promise<CapabilityResult<PreparedContext>> {
     return this.run(context, request, "GENERATION") as Promise<CapabilityResult<PreparedContext>>;
+  }
+
+  async canAccessCheckpoint(context: CapabilityContext, request: CapabilityRequest): Promise<boolean> {
+    try {
+      if (!context || ![context.companyId, context.userId, context.sessionId].every(
+        (value) => typeof value === "string" && value.trim() !== "",
+      )) return false;
+      const capability = this.registry.resolve(request.capability);
+      if (!capability) return false;
+      const input = createImmutableInput(request.input);
+      const role = await this.activeRole(context);
+      return role !== undefined && capability.allowedRoles.includes(role) && capability.validate(input) === true &&
+        await capability.authorize(Object.freeze({ ...context, role }), input) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async activeRole(context: CapabilityContext): Promise<CapabilityRole | undefined> {
+    const membership = await this.prisma.companyUser.findFirst({
+      where: {
+        companyId: context.companyId,
+        userId: context.userId,
+        status: CompanyUserStatus.ACTIVE,
+        company: { status: CompanyStatus.ACTIVE },
+        user: { status: UserStatus.ACTIVE, sessions: { some: {
+          id: context.sessionId, userId: context.userId, revokedAt: null, expiresAt: { gt: new Date() },
+        } } },
+      },
+      select: { role: true },
+    });
+    return membership?.role;
   }
 
   private async run(
@@ -117,33 +150,14 @@ export class AuthorizationGateway {
     let input: unknown;
     try {
       input = createImmutableInput(request.input);
-      const membership = await this.prisma.companyUser.findFirst({
-        where: {
-          companyId: trustedContext.companyId,
-          userId: trustedContext.userId,
-          status: CompanyUserStatus.ACTIVE,
-          company: { status: CompanyStatus.ACTIVE },
-          user: {
-            status: UserStatus.ACTIVE,
-            sessions: {
-              some: {
-                id: trustedContext.sessionId,
-                userId: trustedContext.userId,
-                revokedAt: null,
-                expiresAt: { gt: new Date() },
-              },
-            },
-          },
-        },
-        select: { role: true },
-      });
-      if (!membership || !capability.allowedRoles.includes(membership.role)) {
+      const role = await this.activeRole(trustedContext);
+      if (!role || !capability.allowedRoles.includes(role)) {
         return { success: false, error: "DENIED" };
       }
 
       authorizedContext = Object.freeze({
         ...trustedContext,
-        role: membership.role,
+        role,
       });
       if (capability.validate(input) !== true) {
         return { success: false, error: "INVALID_INPUT" };

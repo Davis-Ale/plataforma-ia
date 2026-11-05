@@ -27,6 +27,7 @@ export class IntegrationRegistry {
       Object.freeze({
         key: adapter.key,
         kind: "contracts" as const,
+        replaySafety: this.replaySafety(adapter.replaySafety),
         read: adapter.read.bind(adapter),
       }),
     );
@@ -48,6 +49,7 @@ export class IntegrationRegistry {
       Object.freeze({
         key: adapter.key,
         kind: "operations" as const,
+        replaySafety: this.replaySafety(adapter.replaySafety),
         plan: adapter.plan.bind(adapter),
       }),
     );
@@ -69,6 +71,7 @@ export class IntegrationRegistry {
       Object.freeze({
         key: adapter.key,
         kind: "people" as const,
+        replaySafety: this.replaySafety(adapter.replaySafety),
         checkCapacity: adapter.checkCapacity.bind(adapter),
       }),
     );
@@ -84,5 +87,11 @@ export class IntegrationRegistry {
 
   getPeople(adapterKey: string): PeoplePort | undefined {
     return this.people.get(adapterKey);
+  }
+
+  private replaySafety(value: unknown): "MANUAL" | "READ_ONLY" | "PURE" {
+    if (value === undefined) return "MANUAL";
+    if (value === "MANUAL" || value === "READ_ONLY" || value === "PURE") return value;
+    throw new Error("Invalid adapter replay policy");
   }
 }

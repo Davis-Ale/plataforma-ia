@@ -165,6 +165,9 @@ model Company {
   capabilityApprovals  CapabilityApproval[]
   aiBudgetPolicies     AiBudgetPolicy[]
   aiUsageAttempts      AiUsageAttempt[]
+  workflowExecutions   WorkflowExecution[]
+  workflowCheckpoints  WorkflowCheckpoint[]
+  workflowIncidents    WorkflowIncident[]
 
   @@map("companies")
 }
@@ -185,6 +188,7 @@ model User {
   createdRequests      Request[]
   requestedApprovals   CapabilityApproval[] @relation("ApprovalRequester")
   decidedApprovals     CapabilityApproval[] @relation("ApprovalDecider")
+  workflowExecutions   WorkflowExecution[]
 
   @@map("users")
 }
@@ -498,8 +502,10 @@ model WorkflowRun {
 
   company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   steps   WorkflowStep[]
+  execution WorkflowExecution?
 
   @@unique([companyId, operationId])
+  @@unique([id, companyId])
   @@index([companyId, status])
   @@index([companyId, createdAt])
   @@map("workflow_runs")
@@ -522,7 +528,9 @@ model WorkflowStep {
 
   company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  checkpoint WorkflowCheckpoint?
 
+  @@unique([id, companyId])
   @@index([companyId, workflowRunId])
   @@index([companyId, status])
   @@index([companyId, createdAt])
@@ -534,6 +542,96 @@ model FoundationCheck {
   createdAt DateTime @default(now())
 
   @@map("_foundation_checks")
+}
+
+enum WorkflowExecutionState {
+  READY
+  RUNNING
+  WAITING
+  FAILED
+  COMPLETED
+}
+
+enum WorkflowCheckpointState {
+  READY
+  DISPATCHED
+  COMPLETED
+  DENIED
+  APPROVAL_REQUIRED
+  UNKNOWN
+}
+
+enum WorkflowReplaySafety {
+  MANUAL
+  READ_ONLY
+  PURE
+}
+
+model WorkflowExecution {
+  workflowRunId     String @id @map("workflow_run_id")
+  companyId         String @map("company_id")
+  requestedByUserId String @map("requested_by_user_id")
+  workflowVersion   String @map("workflow_version")
+  simulated         Boolean @default(false)
+  state             WorkflowExecutionState @default(READY)
+  attemptCount      Int @default(0) @map("attempt_count")
+  maxAttempts       Int @map("max_attempts")
+  leaseMs           Int @map("lease_ms")
+  leaseToken        String? @map("lease_token")
+  leaseUntil        DateTime? @map("lease_until")
+  heartbeatAt       DateTime? @map("heartbeat_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestedBy User @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  run         WorkflowRun @relation(fields: [workflowRunId, companyId], references: [id, companyId], onDelete: Cascade)
+  checkpoints WorkflowCheckpoint[]
+  incidents   WorkflowIncident[]
+
+  @@unique([workflowRunId, companyId])
+  @@index([companyId, state, leaseUntil])
+  @@map("workflow_executions")
+}
+
+model WorkflowCheckpoint {
+  workflowStepId String @id @map("workflow_step_id")
+  companyId      String @map("company_id")
+  workflowRunId  String @map("workflow_run_id")
+  capabilityKey  String @map("capability_key")
+  integrationKind String @map("integration_kind")
+  adapterKey     String? @map("adapter_key")
+  replaySafety   WorkflowReplaySafety @default(MANUAL) @map("replay_safety")
+  state          WorkflowCheckpointState @default(READY)
+  attemptCount   Int @default(0) @map("attempt_count")
+  approvalId     String? @map("approval_id")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  step      WorkflowStep @relation(fields: [workflowStepId, companyId], references: [id, companyId], onDelete: Cascade)
+  execution WorkflowExecution @relation(fields: [workflowRunId, companyId], references: [workflowRunId, companyId], onDelete: Cascade)
+
+  @@unique([workflowStepId, companyId])
+  @@index([companyId, workflowRunId])
+  @@map("workflow_checkpoints")
+}
+
+model WorkflowIncident {
+  id            String @id @default(uuid())
+  companyId     String @map("company_id")
+  workflowRunId String @map("workflow_run_id")
+  workflowStepId String? @map("workflow_step_id")
+  attemptNumber Int @map("attempt_number")
+  code          String
+  createdAt     DateTime @default(now()) @map("created_at")
+  resolvedAt    DateTime? @map("resolved_at")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  execution WorkflowExecution @relation(fields: [workflowRunId, companyId], references: [workflowRunId, companyId], onDelete: Cascade)
+
+  @@unique([companyId, workflowRunId, attemptNumber])
+  @@index([companyId, resolvedAt, createdAt])
+  @@map("workflow_incidents")
 }
 
 model CapabilityApproval {

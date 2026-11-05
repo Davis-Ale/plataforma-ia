@@ -55,6 +55,17 @@ describe("Capability Registry + Authorization Gateway", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it("checks current checkpoint access without executing or consuming approval", async () => {
+    registry.register({ ...capability, approval: { mode: "REQUIRED", approverRoles: ["OWNER"] } });
+    expect(await gateway.canAccessCheckpoint(context, request)).toBe(true);
+    expect(execute).not.toHaveBeenCalled();
+    findFirst.mockResolvedValue(null);
+    expect(await gateway.canAccessCheckpoint(context, request)).toBe(false);
+    findFirst.mockResolvedValue({ role: "MEMBER" });
+    authorize.mockResolvedValue(false);
+    expect(await gateway.canAccessCheckpoint(context, request)).toBe(false);
+  });
+
   it.each(["companyId", "userId", "sessionId"] as const)(
     "denies missing %s before querying or executing",
     async (field) => {

@@ -2,7 +2,7 @@ name: Execution visibility validation
 
 on:
   push:
-    branches: [feat/execution-visibility]
+    branches: [feat/execution-visibility, feat/execution-integrity]
   pull_request:
     paths:
       - "apps/web/**"
@@ -11,6 +11,10 @@ on:
       - "tests/portal/**"
       - "tests/jest.portal.config.cjs"
       - "apps/api/src/workflows/**"
+      - "apps/api/src/scenarios/**"
+      - "apps/api/src/integrations/**"
+      - "apps/api/src/capabilities/**"
+      - "packages/database/prisma/**"
       - "packages/workflows/src/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/execution-visibility.yml"
@@ -52,6 +56,8 @@ jobs:
         run: pnpm --filter @plataforma/api test -- workflows.service.spec.ts workflows.visibility.spec.ts workflows.controller.spec.ts
       - name: Check authentication tests
         run: pnpm --filter @plataforma/api test -- auth-token.service.spec.ts jwt.strategy.spec.ts auth-session.http.spec.ts
+      - name: Check execution authorization and integrations
+        run: pnpm --filter @plataforma/api test -- --runInBand authorization-gateway.service.spec.ts integration-resolver.spec.ts integration-registry.spec.ts prepare-operation.service.spec.ts scenarios.controller.spec.ts
       - name: Check portal request lifecycle
         run: pnpm --filter @plataforma/api exec jest --config ../../tests/jest.portal.config.cjs --runInBand
       - name: Build API
