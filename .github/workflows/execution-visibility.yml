@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/web/**"
       - "apps/api/src/auth/**"
+      - "apps/api/test/**"
       - "tests/portal/**"
       - "tests/jest.portal.config.cjs"
       - "apps/api/src/workflows/**"
@@ -17,6 +18,18 @@ on:
 jobs:
   validation:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: portal-ci-password
+          POSTGRES_DB: plataforma_portal_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d plataforma_portal_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,3 +60,25 @@ jobs:
         run: pnpm --filter @plataforma/web lint
       - name: Build portal
         run: pnpm --filter @plataforma/web build
+      - name: Validate portal with PostgreSQL and Chrome
+        env:
+          CI: "true"
+          DATABASE_URL: postgresql://postgres:portal-ci-password@127.0.0.1:5432/plataforma_portal_ci?schema=public
+          PORTAL_TEST_DATABASE_URL: postgresql://postgres:portal-ci-password@127.0.0.1:5432/plataforma_portal_ci?schema=public
+          JWT_SECRET: portal-ci-access-secret
+          JWT_REFRESH_SECRET: portal-ci-refresh-secret
+          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          PORTAL_QA_ARTIFACT_DIR: ${{ runner.temp }}/portal-qa
+        run: |
+          export CHROME_BIN="$(command -v google-chrome)"
+          test -n "$CHROME_BIN"
+          pnpm --filter @plataforma/database exec prisma db push --skip-generate
+          pnpm --filter @plataforma/api exec jest --config test/jest-portal-e2e.cjs --runInBand
+      - name: Preserve portal inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-qa
+          path: ${{ runner.temp }}/portal-qa
+          if-no-files-found: ignore
