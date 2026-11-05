@@ -89,6 +89,18 @@ describe("Persistent integration bindings with isolated PostgreSQL", () => {
     expect(await audits(companyId)).toBe(1);
   });
 
+  it("keeps the original tenant and adapter when the caller mutates its input during a write", async () => {
+    const companyId = await company();
+    const foreignId = await company();
+    const requested = binding(companyId);
+    const writing = store().create(requested);
+    requested.companyId = foreignId;
+    requested.adapterKey = "mutated-adapter";
+    expect(await writing).toBe(true);
+    expect(await store().find(companyId, "contracts")).toMatchObject({ adapterKey: DEMO_CONTRACTS_ADAPTER_KEY });
+    expect(await store().find(foreignId, "contracts")).toBeUndefined();
+  });
+
   it("rejects competing revisions and stale changes after an adapter-key round trip", async () => {
     const companyId = await company();
     const demo = createDemoContractsAdapter();

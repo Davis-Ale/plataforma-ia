@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@plataforma/database";
 import { Prisma } from "@prisma/client";
-import { IntegrationBindingRecord, IntegrationBindingStore } from "./integration-binding.store";
+import { IntegrationBindingRecord, IntegrationBindingStore, snapshotIntegrationBinding } from "./integration-binding.store";
 import { IntegrationBinding, IntegrationKind } from "./integration.types";
 
 @Injectable()
@@ -17,6 +17,7 @@ export class PrismaIntegrationBindingStore implements IntegrationBindingStore {
   }
 
   async create(binding: IntegrationBinding): Promise<boolean> {
+    binding = snapshotIntegrationBinding(binding);
     return this.prisma.$transaction(async (tx) => {
       await this.lockCompany(tx, binding.companyId);
       const existing = await tx.integrationBinding.findUnique({ where: { companyId_kind: { companyId: binding.companyId, kind: binding.kind } } });
@@ -28,6 +29,7 @@ export class PrismaIntegrationBindingStore implements IntegrationBindingStore {
   }
 
   async replace(binding: IntegrationBinding, expectedRevision: number): Promise<boolean> {
+    binding = snapshotIntegrationBinding(binding);
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) throw new Error("Invalid integration binding revision");
     return this.prisma.$transaction(async (tx) => {
       await this.lockCompany(tx, binding.companyId);

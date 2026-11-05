@@ -3,17 +3,15 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   INTEGRATION_BINDING_STORE,
   IntegrationBindingStore,
+  snapshotIntegrationBinding,
 } from "./integration-binding.store";
 import { IntegrationRegistry } from "./integration-registry.service";
 import {
   ContractsPort,
   IntegrationBinding,
-  IntegrationKind,
   OperationsPort,
   PeoplePort,
 } from "./integration.types";
-
-const KINDS: readonly IntegrationKind[] = ["contracts", "operations", "people"];
 
 @Injectable()
 export class IntegrationResolver {
@@ -29,6 +27,7 @@ export class IntegrationResolver {
   ) {}
 
   async bind(binding: IntegrationBinding): Promise<void> {
+    binding = snapshotIntegrationBinding(binding);
     this.assertBinding(binding);
     if (!await this.store.create(binding)) {
       throw new Error("Integration binding already exists");
@@ -36,6 +35,7 @@ export class IntegrationResolver {
   }
 
   async replaceBinding(binding: IntegrationBinding): Promise<IntegrationBinding> {
+    binding = snapshotIntegrationBinding(binding);
     this.assertBinding(binding);
     const previous = await this.store.find(binding.companyId, binding.kind);
     if (!previous) {
@@ -80,16 +80,6 @@ export class IntegrationResolver {
   }
 
   private assertBinding(binding: IntegrationBinding): void {
-    if (
-      !binding ||
-      typeof binding.companyId !== "string" ||
-      binding.companyId.trim() === "" ||
-      typeof binding.adapterKey !== "string" ||
-      binding.adapterKey.trim() === "" ||
-      !KINDS.includes(binding.kind as IntegrationKind)
-    ) {
-      throw new Error("Invalid integration binding");
-    }
     if (binding.kind === "contracts" && !this.registry.getContracts(binding.adapterKey)) {
       throw new Error("Unknown contracts adapter");
     }
