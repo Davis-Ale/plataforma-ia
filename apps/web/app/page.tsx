@@ -249,7 +249,7 @@ export default function Home() {
           <div className="brand-mark">IA</div>
           <p className="eyebrow">ADR Solutions</p>
           <h1>Plataforma IA</h1>
-          <p className="intro">Automação operacional, integrações e IA nativa com execução governada.</p>
+          
           <form onSubmit={login}>
             <label>
               E-mail
