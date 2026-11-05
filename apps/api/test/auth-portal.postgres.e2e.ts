@@ -170,6 +170,7 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     }
     if (!ready) throw new Error(`Portal unavailable: ${portalLog}`);
     await browser.start(portalUrl);
+    await browser.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
     await browser.waitFor('!!document.querySelector("input[type=email]")');
     const submitLogin = async () => {
       await browser.evaluate(`(() => {
@@ -198,7 +199,7 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     expect(await browser.evaluate<string>("document.cookie")).not.toContain("plataforma_");
 
     await clickRun("portal.qa.1");
-    await browser.waitFor(has("Integridade da execução"));
+    await browser.waitFor(`!!document.querySelector('section[aria-label="Integridade da execução"]')`);
     expect(await browser.evaluate<boolean>(has("Demonstração com adaptador simulado"))).toBe(true);
     expect(await browser.evaluate<boolean>(has("Resultado externo desconhecido"))).toBe(true);
     expect(await browser.evaluate<boolean>('Array.from(document.querySelectorAll("button")).some(button => button.textContent === "Retomar execução")')).toBe(false);
@@ -282,6 +283,11 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     if (process.env.PORTAL_QA_ARTIFACT_DIR) {
       const screenshot = await browser.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
       await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-recovered-execution.png"), Buffer.from(screenshot.data, "base64"));
+      await browser.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+      await browser.waitFor('window.innerWidth === 390');
+      expect(await browser.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+      const mobile = await browser.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-recovered-mobile.png"), Buffer.from(mobile.data, "base64"));
     }
   });
 });

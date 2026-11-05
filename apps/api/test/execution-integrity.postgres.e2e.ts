@@ -2,6 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
 import { PrismaService } from "@plataforma/database";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { ScenariosModule } from "../src/scenarios/scenarios.module";
 import { ExecutionIntegrityService } from "../src/scenarios/execution-integrity.service";
@@ -20,6 +21,8 @@ describe("Execution integrity with isolated PostgreSQL", () => {
   let scenario: PrepareOperationService;
   let resolver: IntegrationResolver;
   const userId = randomUUID();
+  const otherUserId = randomUUID();
+  const otherSessionId = randomUUID();
   const sessionId = randomUUID();
   const companyId = randomUUID();
   const foreignId = randomUUID();
@@ -41,6 +44,9 @@ describe("Execution integrity with isolated PostgreSQL", () => {
     resolver = app.get(IntegrationResolver);
     await prisma.company.createMany({ data: [{ id: companyId, name: "Integrity QA" }, { id: foreignId, name: "Foreign QA" }] });
     await prisma.user.create({ data: { id: userId, email: `integrity-${userId}@example.com`, name: "Integrity QA", passwordHash: "unused-test-only" } });
+    await prisma.user.create({ data: { id: otherUserId, email: `integrity-${otherUserId}@example.com`, name: "Other QA", passwordHash: "unused-test-only" } });
+    await prisma.companyUser.create({ data: { companyId, userId: otherUserId, role: "MEMBER" } });
+    await prisma.authSession.create({ data: { id: otherSessionId, userId: otherUserId, refreshTokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
     await prisma.companyUser.createMany({ data: [companyId, foreignId].map((id) => ({ companyId: id, userId, role: "MEMBER" })) });
     await prisma.authSession.create({ data: { id: sessionId, userId, refreshTokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
     const registry = app.get(IntegrationRegistry);
@@ -66,7 +72,7 @@ describe("Execution integrity with isolated PostgreSQL", () => {
   afterAll(async () => {
     if (prisma) {
       await prisma.company.deleteMany({ where: { id: { in: [companyId, foreignId] } } });
-      await prisma.user.deleteMany({ where: { id: userId } });
+      await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } });
     }
     await app?.close();
   });
@@ -128,6 +134,7 @@ describe("Execution integrity with isolated PostgreSQL", () => {
   it("enforces tenant isolation, current session and original requester before recovery", async () => {
     const run = await open("READ_ONLY");
     await expect(integrity.claim({ ...context, companyId: foreignId }, run.id, "1")).rejects.toThrow("not found");
+    await expect(integrity.claim({ companyId, userId: otherUserId, sessionId: otherSessionId }, run.id, "1")).rejects.toThrow("original requester");
     await prisma.authSession.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
     try { await expect(integrity.claim(context, run.id, "1")).rejects.toThrow("not authorized"); }
     finally { await prisma.authSession.update({ where: { id: sessionId }, data: { revokedAt: null } }); }
@@ -143,5 +150,23 @@ describe("Execution integrity with isolated PostgreSQL", () => {
     await integrity.inspect(context, run.id);
     expect(await integrity.claim(context, run.id, "1")).toMatchObject({ token: null, blocked: "CANCELLED" });
     expect(await prisma.workflowRun.findUnique({ where: { id: run.id } })).toMatchObject({ status: "CANCELLED" });
+  });
+
+  it("rolls back a checkpoint when its audit cannot be persisted", async () => {
+    const run = await open();
+    const failing = new ExecutionIntegrityService({
+      $transaction: (action: (tx: Prisma.TransactionClient) => Promise<unknown>) => prisma.$transaction((tx) => action(new Proxy(tx, {
+        get(target, property) {
+          if (property === "auditLog") return { create: async () => { throw new Error("isolated audit failure"); } };
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }))),
+    } as unknown as PrismaService);
+    await expect(failing.checkpoint(context, run.id, run.token, run.stepId, { value: "known" })).rejects.toThrow("audit failure");
+    expect(await prisma.workflowCheckpoint.findUnique({ where: { workflowStepId: run.stepId } })).toMatchObject({ state: "DISPATCHED" });
+    expect(await prisma.workflowStep.findUnique({ where: { id: run.stepId } })).toMatchObject({ status: "RUNNING", output: null });
+    await expire(run.id);
+    expect(await integrity.claim(context, run.id, "1")).toMatchObject({ token: null, blocked: "RECONCILIATION_REQUIRED" });
   });
 });
