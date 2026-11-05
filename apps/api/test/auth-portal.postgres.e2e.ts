@@ -70,7 +70,7 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await browser.close();
     if (portal) {
       portal.kill("SIGTERM");
-      if (portal.exitCode === null) await Promise.race([new Promise<void>((complete) => portal!.once("exit", () => complete())), delay(2000)]);
+      if (portal.exitCode === null) await Promise.race([new Promise<void>((complete) => portal!.once("exit", () => complete())), delay(2000, undefined, { ref: false })]);
       if (portal.exitCode === null) portal.kill("SIGKILL");
     }
     if (proxy) await new Promise<void>((complete) => proxy!.close(() => complete()));

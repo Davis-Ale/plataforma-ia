@@ -15,22 +15,25 @@ export class BrowserClient {
     const binary = process.env.CHROME_BIN;
     if (!binary) throw new Error("CHROME_BIN is required");
     this.directory = await mkdtemp(join(tmpdir(), "plataforma-browser-"));
+    let diagnostics = "";
     this.process = spawn(binary, [
-      "--headless", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run",
+      "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run",
+      "--no-default-browser-check", "--disable-background-networking", "--disable-extensions",
       "--remote-debugging-port=0", `--user-data-dir=${this.directory}`, "about:blank",
-    ], { stdio: "ignore" });
+    ], { stdio: ["ignore", "ignore", "pipe"] });
+    this.process.stderr!.on("data", (chunk) => { diagnostics = (diagnostics + String(chunk)).slice(-12000); });
     let launchError: Error | undefined;
     this.process.on("error", (error) => { launchError = error; });
     let port: string | undefined;
     for (let attempt = 0; attempt < 100; attempt++) {
       if (launchError) throw launchError;
-      if (this.process.exitCode !== null) throw new Error("Browser exited during startup");
+      if (this.process.exitCode !== null || this.process.signalCode !== null) throw new Error(`Browser exited during startup: ${diagnostics}`);
       const active = await readFile(join(this.directory, "DevToolsActivePort"), "utf8").catch(() => "");
-      port = active.split("\n")[0];
+      port = active.split("\n")[0] || diagnostics.match(/DevTools listening on ws:\/\/[^:]+:(\d+)/)?.[1];
       if (port) break;
       await delay(100);
     }
-    if (!port) throw new Error("Browser debugging port unavailable");
+    if (!port) throw new Error(`Browser debugging port unavailable: ${diagnostics}`);
     const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json()) as Array<{ type: string; webSocketDebuggerUrl: string }>;
     const target = targets.find((item) => item.type === "page");
     if (!target) throw new Error("Browser page unavailable");
@@ -94,7 +97,7 @@ export class BrowserClient {
     this.socket?.close();
     this.process?.kill("SIGTERM");
     if (this.process && this.process.exitCode === null) {
-      await Promise.race([new Promise<void>((resolve) => this.process!.once("exit", () => resolve())), delay(2000)]);
+      await Promise.race([new Promise<void>((resolve) => this.process!.once("exit", () => resolve())), delay(2000, undefined, { ref: false })]);
       if (this.process.exitCode === null) this.process.kill("SIGKILL");
     }
     if (this.directory) await rm(this.directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
