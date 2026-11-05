@@ -27,6 +27,11 @@ jobs:
         run: pnpm install --no-frozen-lockfile
       - name: Generate Prisma client
         run: pnpm db:generate
+      - name: Build internal packages
+        run: |
+          pnpm --filter @plataforma/database build
+          pnpm --filter @plataforma/auth build
+          pnpm --filter @plataforma/workflows build
       - name: Check workflow tests
         run: pnpm --filter @plataforma/api test -- workflows.service.spec.ts workflows.visibility.spec.ts workflows.controller.spec.ts
       - name: Build API
