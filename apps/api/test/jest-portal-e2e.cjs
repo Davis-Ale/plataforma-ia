@@ -1,6 +1,6 @@
 module.exports = {
   rootDir: "..",
-  testMatch: ["<rootDir>/test/auth-portal.postgres.e2e.ts", "<rootDir>/test/execution-integrity.postgres.e2e.ts", "<rootDir>/src/capabilities/human-approval.service.spec.ts"],
+  testMatch: ["<rootDir>/test/auth-portal.postgres.e2e.ts", "<rootDir>/test/execution-integrity.postgres.e2e.ts", "<rootDir>/test/integration-bindings.postgres.e2e.ts", "<rootDir>/src/capabilities/human-approval.service.spec.ts"],
   testEnvironment: "node",
   testTimeout: 60000,
   transform: {

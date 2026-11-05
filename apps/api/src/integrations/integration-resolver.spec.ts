@@ -1,4 +1,5 @@
 import { Test } from "@nestjs/testing";
+import { PrismaService } from "@plataforma/database";
 
 jest.mock("../capabilities/capabilities.module", () => {
   const { Module: NestModule } = require("@nestjs/common");
@@ -210,7 +211,8 @@ describe("Integration resolution and generic capabilities", () => {
   it("resolves IntegrationResolver through Nest DI with INTEGRATION_BINDING_STORE token", async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [IntegrationsModule],
-    }).compile();
+    }).overrideProvider(INTEGRATION_BINDING_STORE).useValue(new InMemoryIntegrationBindingStore())
+      .overrideProvider(PrismaService).useValue({}).compile();
 
     await moduleRef.init();
 
@@ -221,10 +223,10 @@ describe("Integration resolution and generic capabilities", () => {
     expect(nestedResolver).toBeInstanceOf(IntegrationResolver);
     expect(nestedStore).toBeInstanceOf(InMemoryIntegrationBindingStore);
 
-    await nestedStore.set("company-di", "contracts", DEMO_CONTRACTS_ADAPTER_KEY);
+    await nestedStore.create({ companyId: "company-di", kind: "contracts", adapterKey: DEMO_CONTRACTS_ADAPTER_KEY });
     const adapter = await nestedResolver.resolveContracts("company-di");
     expect(adapter?.key).toBe(DEMO_CONTRACTS_ADAPTER_KEY);
-    expect(await nestedStore.get("company-di", "contracts")).toBe(DEMO_CONTRACTS_ADAPTER_KEY);
+    expect(await nestedStore.find("company-di", "contracts")).toMatchObject({ adapterKey: DEMO_CONTRACTS_ADAPTER_KEY, revision: 1 });
     expect(nestedRegistry.getContracts(DEMO_CONTRACTS_ADAPTER_KEY)?.key).toBe(DEMO_CONTRACTS_ADAPTER_KEY);
   });
 
@@ -249,5 +251,22 @@ describe("Integration resolution and generic capabilities", () => {
     expect((await resolver.resolveContracts("company-a"))?.key).toBe(replacement.key);
     await pinned;
     expect((await resolver.resolveContracts("company-a"))?.key).toBe(replacement.key);
+  });
+
+  it("does not overwrite an integration during concurrent first-time bindings", async () => {
+    const binding = { companyId: "company-race", kind: "contracts" as const, adapterKey: DEMO_CONTRACTS_ADAPTER_KEY };
+    const results = await Promise.allSettled([resolver.bind(binding), resolver.bind(binding)]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(await store.find(binding.companyId, binding.kind)).toMatchObject({ ...binding, revision: 1 });
+  });
+
+  it("rejects stale revisions even when an adapter binding returns to its previous key", async () => {
+    const original = { companyId: "company-revision", kind: "contracts" as const, adapterKey: "first" };
+    await store.create(original);
+    await store.replace({ ...original, adapterKey: "second" }, 1);
+    await store.replace(original, 2);
+    expect(await store.replace({ ...original, adapterKey: "stale" }, 1)).toBe(false);
+    expect(await store.find(original.companyId, original.kind)).toMatchObject({ ...original, revision: 3 });
   });
 });

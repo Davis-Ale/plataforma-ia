@@ -30,22 +30,21 @@ export class IntegrationResolver {
 
   async bind(binding: IntegrationBinding): Promise<void> {
     this.assertBinding(binding);
-    if (await this.store.has(binding.companyId, binding.kind)) {
+    if (!await this.store.create(binding)) {
       throw new Error("Integration binding already exists");
     }
-    await this.store.set(binding.companyId, binding.kind, binding.adapterKey);
   }
 
   async replaceBinding(binding: IntegrationBinding): Promise<IntegrationBinding> {
     this.assertBinding(binding);
-    if (!(await this.store.has(binding.companyId, binding.kind))) {
+    const previous = await this.store.find(binding.companyId, binding.kind);
+    if (!previous) {
       throw new Error("Integration binding not found");
     }
-    const previousAdapterKey = await this.store.get(binding.companyId, binding.kind);
-    if (previousAdapterKey === binding.adapterKey) {
+    if (previous.adapterKey === binding.adapterKey) {
       throw new Error("Integration binding unchanged");
     }
-    await this.store.set(binding.companyId, binding.kind, binding.adapterKey);
+    if (!await this.store.replace(binding, previous.revision)) throw new Error("Integration binding changed concurrently");
     return Object.freeze({
       companyId: binding.companyId,
       kind: binding.kind,
@@ -57,27 +56,27 @@ export class IntegrationResolver {
     const pinned = this.snapshot.getStore();
     if (pinned?.companyId === companyId && pinned.adapter.kind === "contracts") return pinned.adapter;
     if (typeof companyId !== "string" || companyId.trim() === "") return undefined;
-    const adapterKey = await this.store.get(companyId, "contracts");
-    if (!adapterKey) return undefined;
-    return this.registry.getContracts(adapterKey);
+    const binding = await this.store.find(companyId, "contracts");
+    if (!binding) return undefined;
+    return this.registry.getContracts(binding.adapterKey);
   }
 
   async resolveOperations(companyId: string): Promise<OperationsPort | undefined> {
     const pinned = this.snapshot.getStore();
     if (pinned?.companyId === companyId && pinned.adapter.kind === "operations") return pinned.adapter;
     if (typeof companyId !== "string" || companyId.trim() === "") return undefined;
-    const adapterKey = await this.store.get(companyId, "operations");
-    if (!adapterKey) return undefined;
-    return this.registry.getOperations(adapterKey);
+    const binding = await this.store.find(companyId, "operations");
+    if (!binding) return undefined;
+    return this.registry.getOperations(binding.adapterKey);
   }
 
   async resolvePeople(companyId: string): Promise<PeoplePort | undefined> {
     const pinned = this.snapshot.getStore();
     if (pinned?.companyId === companyId && pinned.adapter.kind === "people") return pinned.adapter;
     if (typeof companyId !== "string" || companyId.trim() === "") return undefined;
-    const adapterKey = await this.store.get(companyId, "people");
-    if (!adapterKey) return undefined;
-    return this.registry.getPeople(adapterKey);
+    const binding = await this.store.find(companyId, "people");
+    if (!binding) return undefined;
+    return this.registry.getPeople(binding.adapterKey);
   }
 
   private assertBinding(binding: IntegrationBinding): void {
