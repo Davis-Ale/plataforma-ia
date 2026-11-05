@@ -540,7 +540,7 @@ export default function Home() {
               {selected.execution ? (
                 <section aria-label="Integridade da execução">
                   <p className="section-kicker">Integridade da execução</p>
-                  {selected.execution.simulated ? <p className="alert">Demonstração com adaptador simulado. Não comprova integração com sistema externo.</p> : null}
+                  {selected.execution.simulated ? <p className="alert notice">Demonstração com adaptador simulado. Não comprova integração com sistema externo.</p> : null}
                   <dl className="facts">
                     <div><dt>Tentativas</dt><dd>{selected.execution.attemptCount} de {selected.execution.maxAttempts}</dd></div>
                     <div><dt>Último sinal de atividade</dt><dd>{formatDate(selected.execution.heartbeatAt)}</dd></div>
@@ -554,7 +554,7 @@ export default function Home() {
                       <button className="secondary" type="button" disabled={actionLoading} onClick={() => void executionAction("inspect")}>Verificar interrupção</button>
                       {selected.execution.state !== "RUNNING" && selected.execution.attemptCount < selected.execution.maxAttempts &&
                         !selected.execution.checkpoints.some((item) => item.state === "UNKNOWN" && item.replaySafety === "MANUAL") ? (
-                        <button type="button" disabled={actionLoading} onClick={() => void executionAction("resume")}>{actionLoading ? "Processando…" : "Retomar execução"}</button>
+                        <button className="primary" type="button" disabled={actionLoading} onClick={() => void executionAction("resume")}>{actionLoading ? "Processando…" : "Retomar execução"}</button>
                       ) : null}
                     </div>
                   ) : null}

@@ -76,4 +76,10 @@ export class BrowserClient {
   async close() {
     this.socket?.close();
   }
+
+  async capturePage() {
+    const { cssContentSize } = await this.send<{ cssContentSize: { width: number; height: number } }>("Page.getLayoutMetrics");
+    return this.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width: cssContentSize.width, height: cssContentSize.height, scale: 1 } });
+  }
 }

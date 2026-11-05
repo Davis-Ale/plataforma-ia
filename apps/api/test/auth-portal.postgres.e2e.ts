@@ -207,7 +207,7 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await browser.waitFor('!Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Verificar interrupção").disabled');
     if (process.env.PORTAL_QA_ARTIFACT_DIR) {
       await mkdir(process.env.PORTAL_QA_ARTIFACT_DIR, { recursive: true });
-      const screenshot = await browser.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+      const screenshot = await browser.capturePage();
       await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-execution-integrity.png"), Buffer.from(screenshot.data, "base64"));
     }
 
@@ -281,12 +281,12 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     expect(await browser.evaluate<boolean>('document.body.innerText.includes("Demonstração com adaptador simulado")')).toBe(true);
     expect(await browser.evaluate<boolean>('document.body.innerText.includes("Resolvido")')).toBe(true);
     if (process.env.PORTAL_QA_ARTIFACT_DIR) {
-      const screenshot = await browser.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+      const screenshot = await browser.capturePage();
       await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-recovered-execution.png"), Buffer.from(screenshot.data, "base64"));
       await browser.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
       await browser.waitFor('window.innerWidth === 390');
       expect(await browser.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
-      const mobile = await browser.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+      const mobile = await browser.capturePage();
       await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-recovered-mobile.png"), Buffer.from(mobile.data, "base64"));
     }
   });
