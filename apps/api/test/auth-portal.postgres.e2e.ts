@@ -172,6 +172,11 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await browser.start(portalUrl);
     await browser.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
     await browser.waitFor('!!document.querySelector("input[type=email]")');
+    if (process.env.PORTAL_QA_ARTIFACT_DIR) {
+      await mkdir(process.env.PORTAL_QA_ARTIFACT_DIR, { recursive: true });
+      const screenshot = await browser.capturePage();
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-login.png"), Buffer.from(screenshot.data, "base64"));
+    }
     const submitLogin = async () => {
       await browser.evaluate(`(() => {
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
@@ -271,8 +276,8 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await browser.send("Page.reload");
     await browser.waitFor('!!document.querySelector("select[aria-label=Empresa]")');
     await browser.evaluate(`(() => { const select=document.querySelector("select[aria-label=Empresa]"); select.value=${JSON.stringify(companyA)}; select.dispatchEvent(new Event("change",{bubbles:true})); })()`);
-    await browser.waitFor('!!Array.from(document.querySelectorAll("button.run-row")).find(button=>button.innerText.includes("operations.prepare_from_contract"))');
-    await browser.evaluate('Array.from(document.querySelectorAll("button.run-row")).find(button=>button.innerText.includes("operations.prepare_from_contract")).click()');
+    await browser.waitFor(`!!document.querySelector('button[data-workflow-key="operations.prepare_from_contract"]')`);
+    await browser.evaluate(`document.querySelector('button[data-workflow-key="operations.prepare_from_contract"]').click()`);
     await browser.waitFor('!!Array.from(document.querySelectorAll("button")).find(button=>button.textContent==="Retomar execução")');
     await browser.evaluate('Array.from(document.querySelectorAll("button")).find(button=>button.textContent==="Retomar execução").click()');
     await browser.waitFor('!!document.querySelector(".detail-heading .status-completed")');
