@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
+import { randomUUID } from "node:crypto";
 import { JwtPayload } from "./types/jwt-payload";
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
@@ -48,6 +49,7 @@ export class AuthTokenService {
       this.jwtService.signAsync(refreshPayload, {
         secret: this.refreshTokenSecret,
         expiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
+        jwtid: randomUUID(),
       }),
     ]);
 
@@ -69,7 +71,12 @@ export class AuthTokenService {
         },
       );
 
-      if (payload.type === "refresh" && payload.sessionId.trim().length > 0) {
+      if (
+        payload.type === "refresh" &&
+        [payload.sub, payload.email, payload.sessionId].every(
+          (value) => typeof value === "string" && value.trim().length > 0,
+        )
+      ) {
         return payload;
       }
 

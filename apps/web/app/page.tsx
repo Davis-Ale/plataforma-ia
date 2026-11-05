@@ -1,6 +1,7 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RequestScope } from "../lib/request-scope";
 
 type CompanyMembership = {
   id: string;
@@ -105,6 +106,11 @@ export default function Home() {
   const [status, setStatus] = useState<WorkflowStatus | "">("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const sessionRequests = useRef(new RequestScope());
+  const workflowRequests = useRef(new RequestScope());
+  const detailRequests = useRef(new RequestScope());
 
   const activeCompanies = useMemo(
     () => user?.companies.filter(
@@ -113,62 +119,108 @@ export default function Home() {
     [user],
   );
 
-  const loadWorkflows = useCallback(async (currentCompanyId: string, currentStatus = status) => {
+  const resetSession = useCallback(() => {
+    sessionRequests.current.cancel();
+    workflowRequests.current.cancel();
+    detailRequests.current.cancel();
+    setUser(null);
+    setCompanyId("");
+    setWorkflows([]);
+    setSelected(null);
+    setStatus("");
+    setWorkflowsLoading(false);
+    setDetailLoading(false);
+    setLoading(false);
+  }, []);
+
+  const loadWorkflows = useCallback(async (currentCompanyId: string, currentStatus = "") => {
+    const pending = workflowRequests.current.start();
+    detailRequests.current.cancel();
+    setWorkflows([]);
+    setSelected(null);
+    setDetailLoading(false);
     if (!currentCompanyId) {
+      setWorkflowsLoading(false);
       return;
     }
+    setWorkflowsLoading(true);
     setMessage("");
     const params = new URLSearchParams({ companyId: currentCompanyId });
     if (currentStatus) {
       params.set("status", currentStatus);
     }
     try {
-      const response = await fetch(`/api/workflows?${params.toString()}`, { cache: "no-store" });
+      const response = await fetch(`/api/workflows?${params.toString()}`, {
+        cache: "no-store", signal: pending.signal,
+      });
+      if (!pending.isCurrent()) return;
       if (response.status === 401) {
-        setUser(null);
-        setWorkflows([]);
-        setSelected(null);
+        resetSession();
         return;
       }
       const data = await response.json() as WorkflowListResponse | { message?: string };
+      if (!pending.isCurrent()) return;
       if (!response.ok || !("items" in data)) {
         setMessage("Não foi possível carregar as execuções.");
         return;
       }
       setWorkflows(data.items);
-      if (selected && !data.items.some((item) => item.id === selected.id)) {
-        setSelected(null);
-      }
     } catch {
+      if (!pending.isCurrent()) return;
       setMessage("API indisponível. Verifique a conexão com a plataforma.");
+    } finally {
+      if (pending.isCurrent()) setWorkflowsLoading(false);
     }
-  }, [selected, status]);
+  }, [resetSession]);
 
   const loadDetail = useCallback(async (id: string, currentCompanyId = companyId) => {
+    const pending = detailRequests.current.start();
+    setSelected(null);
     if (!currentCompanyId) {
+      setDetailLoading(false);
       return;
     }
+    setDetailLoading(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/workflows/${encodeURIComponent(id)}?companyId=${encodeURIComponent(currentCompanyId)}`, { cache: "no-store" });
+      const response = await fetch(`/api/workflows/${encodeURIComponent(id)}?companyId=${encodeURIComponent(currentCompanyId)}`, {
+        cache: "no-store", signal: pending.signal,
+      });
+      if (!pending.isCurrent()) return;
+      if (response.status === 401) {
+        resetSession();
+        return;
+      }
       if (!response.ok) {
         setMessage("Não foi possível carregar os detalhes da execução.");
         return;
       }
-      setSelected(await response.json() as WorkflowDetail);
+      const data = await response.json() as WorkflowDetail;
+      if (pending.isCurrent()) setSelected(data);
     } catch {
+      if (!pending.isCurrent()) return;
       setMessage("API indisponível. Verifique a conexão com a plataforma.");
+    } finally {
+      if (pending.isCurrent()) setDetailLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, resetSession]);
 
   useEffect(() => {
+    const sessions = sessionRequests.current;
+    const workflows = workflowRequests.current;
+    const details = detailRequests.current;
+    const pending = sessions.start();
     const bootstrap = async () => {
       try {
-        const response = await fetch("/api/session/me", { cache: "no-store" });
+        const response = await fetch("/api/session/me", {
+          cache: "no-store", signal: pending.signal,
+        });
+        if (!pending.isCurrent()) return;
         if (!response.ok) {
           return;
         }
         const currentUser = await response.json() as User;
+        if (!pending.isCurrent()) return;
         setUser(currentUser);
         const firstCompany = currentUser.companies.find(
           (membership) => membership.status === "ACTIVE" && membership.company.status === "ACTIVE",
@@ -178,16 +230,23 @@ export default function Home() {
           await loadWorkflows(firstCompany.company.id, "");
         }
       } catch {
+        if (!pending.isCurrent()) return;
         setMessage("API indisponível. Verifique a conexão com a plataforma.");
       } finally {
-        setLoading(false);
+        if (pending.isCurrent()) setLoading(false);
       }
     };
     void bootstrap();
-  }, []);
+    return () => {
+      sessions.cancel();
+      workflows.cancel();
+      details.cancel();
+    };
+  }, [loadWorkflows]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const pending = sessionRequests.current.start();
     setLoading(true);
     setMessage("");
     try {
@@ -195,8 +254,10 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        signal: pending.signal,
       });
       const data = await response.json() as { user?: User };
+      if (!pending.isCurrent()) return;
       if (!response.ok || !data.user) {
         setMessage("E-mail ou senha inválidos.");
         return;
@@ -211,19 +272,38 @@ export default function Home() {
         await loadWorkflows(firstCompany.company.id, "");
       }
     } catch {
+      if (!pending.isCurrent()) return;
       setMessage("API indisponível. Verifique a conexão com a plataforma.");
     } finally {
-      setLoading(false);
+      if (pending.isCurrent()) setLoading(false);
     }
   }
 
   async function logout() {
-    await fetch("/api/session/logout", { method: "POST" });
-    setUser(null);
+    const pending = sessionRequests.current.start();
+    workflowRequests.current.cancel();
+    detailRequests.current.cancel();
     setWorkflows([]);
     setSelected(null);
-    setCompanyId("");
-    setStatus("");
+    setWorkflowsLoading(false);
+    setDetailLoading(false);
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/session/logout", {
+        method: "POST", signal: pending.signal,
+      });
+      if (!pending.isCurrent()) return;
+      if (!response.ok) {
+        setMessage("Não foi possível encerrar a sessão. Tente novamente.");
+        return;
+      }
+      resetSession();
+    } catch {
+      if (pending.isCurrent()) setMessage("Não foi possível encerrar a sessão. Tente novamente.");
+    } finally {
+      if (pending.isCurrent()) setLoading(false);
+    }
   }
 
   async function changeCompany(nextCompanyId: string) {
@@ -291,7 +371,7 @@ export default function Home() {
         </div>
         <div className="topbar-actions">
           {activeCompanies.length > 1 ? (
-            <select value={companyId} onChange={(event: ChangeEvent<HTMLSelectElement>) => void changeCompany(event.target.value)} aria-label="Empresa">
+            <select value={companyId} disabled={loading} onChange={(event: ChangeEvent<HTMLSelectElement>) => void changeCompany(event.target.value)} aria-label="Empresa">
               {activeCompanies.map((membership) => (
                 <option key={membership.company.id} value={membership.company.id}>
                   {membership.company.name}
@@ -302,7 +382,7 @@ export default function Home() {
             <span className="company-name">{activeCompanies[0]?.company.name ?? "Sem empresa ativa"}</span>
           )}
           <span className="user-name">{user.name}</span>
-          <button className="secondary" type="button" onClick={() => void logout()}>Sair</button>
+          <button className="secondary" type="button" disabled={loading} onClick={() => void logout()}>Sair</button>
         </div>
       </header>
 
@@ -312,7 +392,7 @@ export default function Home() {
           <h2>Workflows</h2>
         </div>
         <div className="toolbar-actions">
-          <select value={status} onChange={(event: ChangeEvent<HTMLSelectElement>) => void changeStatus(event.target.value as WorkflowStatus | "")} aria-label="Filtrar por status">
+          <select value={status} disabled={loading || !companyId} onChange={(event: ChangeEvent<HTMLSelectElement>) => void changeStatus(event.target.value as WorkflowStatus | "")} aria-label="Filtrar por status">
             <option value="">Todos os status</option>
             <option value="PENDING">Pendentes</option>
             <option value="RUNNING">Em execução</option>
@@ -320,15 +400,19 @@ export default function Home() {
             <option value="FAILED">Falhas</option>
             <option value="CANCELLED">Canceladas</option>
           </select>
-          <button className="secondary" type="button" onClick={() => void loadWorkflows(companyId)}>Atualizar</button>
+          <button className="secondary" type="button" disabled={loading || !companyId} onClick={() => void loadWorkflows(companyId, status)}>Atualizar</button>
         </div>
       </section>
 
       {message ? <div className="alert">{message}</div> : null}
 
       <div className="workspace">
-        <section className="run-list" aria-label="Execuções">
-          {workflows.length === 0 ? (
+        <section className="run-list" aria-label="Execuções" aria-busy={workflowsLoading}>
+          {workflowsLoading ? (
+            <div className="empty-state" role="status">Carregando execuções…</div>
+          ) : !companyId ? (
+            <div className="empty-state"><strong>Nenhuma empresa ativa</strong></div>
+          ) : workflows.length === 0 ? (
             <div className="empty-state">
               <strong>Nenhuma execução registrada</strong>
               <span>Quando um workflow real for executado, ele aparecerá aqui.</span>
@@ -353,8 +437,10 @@ export default function Home() {
           ))}
         </section>
 
-        <aside className="detail-panel" aria-live="polite">
-          {!selected ? (
+        <aside className="detail-panel" aria-live="polite" aria-busy={detailLoading}>
+          {detailLoading ? (
+            <div className="empty-state compact" role="status">Carregando execução…</div>
+          ) : !selected ? (
             <div className="empty-state compact">
               <strong>Selecione uma execução</strong>
               <span>Os detalhes persistidos do workflow serão exibidos aqui.</span>

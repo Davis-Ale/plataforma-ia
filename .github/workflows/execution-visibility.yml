@@ -6,6 +6,9 @@ on:
   pull_request:
     paths:
       - "apps/web/**"
+      - "apps/api/src/auth/**"
+      - "tests/portal/**"
+      - "tests/jest.portal.config.cjs"
       - "apps/api/src/workflows/**"
       - "packages/workflows/src/**"
       - "pnpm-lock.yaml"
@@ -34,6 +37,10 @@ jobs:
           pnpm --filter @plataforma/workflows build
       - name: Check workflow tests
         run: pnpm --filter @plataforma/api test -- workflows.service.spec.ts workflows.visibility.spec.ts workflows.controller.spec.ts
+      - name: Check authentication tests
+        run: pnpm --filter @plataforma/api test -- auth-token.service.spec.ts jwt.strategy.spec.ts auth-session.http.spec.ts
+      - name: Check portal request lifecycle
+        run: pnpm --filter @plataforma/api exec jest --config ../../tests/jest.portal.config.cjs --runInBand
       - name: Build API
         run: pnpm --filter @plataforma/api build
       - name: Check portal types
