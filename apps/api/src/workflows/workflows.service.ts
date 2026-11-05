@@ -1,9 +1,9 @@
-import { buildProcessObservation } from "../observability/process-observation";
-import { WorkflowRun, WorkflowStep } from "@prisma/client";
 import { Injectable } from "@nestjs/common";
 import {
   AuditAction,
   Prisma,
+  WorkflowRun,
+  WorkflowStep,
 } from "@prisma/client";
 import {
   CreateWorkflowStepData,
@@ -11,6 +11,8 @@ import {
   WorkflowsService as WorkflowsEngineService,
 } from "@plataforma/workflows";
 import { AuditService } from "../audit/audit.service";
+import { buildProcessObservation } from "../observability/process-observation";
+import { FindWorkflowRunsQueryDto } from "./dto/find-workflow-runs-query.dto";
 
 @Injectable()
 export class WorkflowsService {
@@ -47,6 +49,42 @@ export class WorkflowsService {
     }
 
     return result;
+  }
+
+  async findAll(
+    companyId: string,
+    query: FindWorkflowRunsQueryDto,
+  ) {
+    const page = this.toPositiveNumber(query.page, 1);
+    const requestedLimit = this.toPositiveNumber(query.limit, 20);
+    const limit = Math.min(requestedLimit, 100);
+    const skip = (page - 1) * limit;
+    const [items, total] = await this.workflowsEngine.listRuns(
+      companyId,
+      query.status,
+      skip,
+      limit,
+    );
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  findOne(
+    companyId: string,
+    workflowRunId: string,
+  ) {
+    return this.workflowsEngine.getRunDetails(
+      companyId,
+      workflowRunId,
+    );
   }
 
   async createStep(
@@ -332,4 +370,23 @@ export class WorkflowsService {
     });
   }
 
+  private toPositiveNumber(
+    value: string | undefined,
+    fallback: number,
+  ) {
+    if (value === undefined) {
+      return fallback;
+    }
+
+    const parsed = Number(value);
+
+    if (
+      !Number.isSafeInteger(parsed) ||
+      parsed < 1
+    ) {
+      return fallback;
+    }
+
+    return Math.floor(parsed);
+  }
 }

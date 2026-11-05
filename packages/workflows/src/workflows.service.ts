@@ -100,6 +100,36 @@ export class WorkflowsService {
     return this.findRunOrThrow(companyId, workflowRunId);
   }
 
+  listRuns(
+    companyId: string,
+    status: WorkflowStatus | undefined,
+    skip: number,
+    take: number,
+  ) {
+    return this.workflowsRepository.findRuns(
+      companyId,
+      status,
+      skip,
+      take,
+    );
+  }
+
+  async getRunDetails(
+    companyId: string,
+    workflowRunId: string,
+  ) {
+    const run = await this.workflowsRepository.findRunWithSteps(
+      companyId,
+      workflowRunId,
+    );
+
+    if (run === null) {
+      throw new NotFoundException("Workflow run not found");
+    }
+
+    return run;
+  }
+
   async createStep(
     companyId: string,
     workflowRunId: string,
