@@ -6,6 +6,8 @@ import {
   CompanyStatus,
   CompanyUserStatus,
   UserStatus,
+  Prisma,
+  CapabilityApproval,
 } from "@prisma/client";
 import { PrismaService } from "@plataforma/database";
 import { createHash } from "node:crypto";
@@ -140,6 +142,10 @@ export class HumanApprovalService {
     approvalId: string,
     decision: CapabilityApprovalDecision,
     purpose: ApprovalPurpose,
+    review?: Readonly<{
+      verify: (tx: Prisma.TransactionClient, approval: CapabilityApproval) => Promise<boolean>;
+      afterDecision?: (tx: Prisma.TransactionClient, approval: CapabilityApproval) => Promise<void>;
+    }>,
   ): Promise<DecisionResult> {
     try {
       if (!this.validContext(context) || !this.validPurpose(purpose)) {
@@ -152,11 +158,9 @@ export class HumanApprovalService {
       ) {
         return { success: false, error: "DENIED" };
       }
-      const role = await this.actorRole(context);
-      if (!role) {
-        return { success: false, error: "DENIED" };
-      }
       return await this.prisma.$transaction(async (tx): Promise<DecisionResult> => {
+        const role = await this.actorRole(context, tx);
+        if (!role) return { success: false, error: "DENIED" };
         const approval = await tx.capabilityApproval.findFirst({
           where: {
             id: approvalId,
@@ -172,6 +176,7 @@ export class HumanApprovalService {
         ) {
           return { success: false, error: "DENIED" };
         }
+        if (review && !await review.verify(tx, approval)) return { success: false, error: "DENIED" };
         const updated = await tx.capabilityApproval.updateMany({
           where: {
             id: approvalId,
@@ -189,6 +194,7 @@ export class HumanApprovalService {
         if (updated.count !== 1) {
           return { success: false, error: "DENIED" };
         }
+        await review?.afterDecision?.(tx, approval);
         await tx.auditLog.create({
           data: {
             companyId: context.companyId,
@@ -206,11 +212,11 @@ export class HumanApprovalService {
     }
   }
 
-  private async actorRole(context: CapabilityContext) {
+  async actorRole(context: CapabilityContext, client: Prisma.TransactionClient | PrismaService = this.prisma) {
     if (!this.validContext(context)) {
       return undefined;
     }
-    const membership = await this.prisma.companyUser.findFirst({
+    const membership = await client.companyUser.findFirst({
       where: {
         companyId: context.companyId,
         userId: context.userId,

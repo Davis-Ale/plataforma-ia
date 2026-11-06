@@ -300,5 +300,20 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
       const mobile = await browser.capturePage();
       await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-empty-mobile.png"), Buffer.from(mobile.data, "base64"));
     }
+    await browser.evaluate('Array.from(document.querySelectorAll("button.nav-item")).find(button => button.textContent.trim() === "Aprovações").click()');
+    await browser.waitFor('!!document.querySelector("#aprovacoes .empty-state")');
+    expect(await browser.evaluate<number>('document.querySelectorAll("article[data-approval-id]").length')).toBe(0);
+    expect(await browser.evaluate<boolean>('document.querySelector("#aprovacoes").innerText.includes("Nenhuma empresa ativa")')).toBe(true);
+    expect(await browser.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+    if (process.env.PORTAL_QA_ARTIFACT_DIR) {
+      const mobile = await browser.capturePage();
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "approvals-empty-mobile.png"), Buffer.from(mobile.data, "base64"));
+    }
+    await browser.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await browser.waitFor('window.innerWidth === 1280');
+    if (process.env.PORTAL_QA_ARTIFACT_DIR) {
+      const desktop = await browser.capturePage();
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "approvals-empty-desktop.png"), Buffer.from(desktop.data, "base64"));
+    }
   });
 });
