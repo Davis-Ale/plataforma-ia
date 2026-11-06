@@ -463,10 +463,10 @@ export default function Home() {
                 </option>
               ))}
             </select>
-          ) : (
+          ) : activeCompanies.length === 1 ? (
             <span className="company-name">{activeCompanies[0]?.company.name ?? "Sem empresa ativa"}</span>
-          )}
-          <span className="user-name">{user.name}</span>
+          ) : null}
+          {user.name.trim() ? <span className="user-name">{user.name}</span> : null}
           <button className="secondary logout" type="button" disabled={loading} onClick={() => void logout()}>Sair</button>
         </div>
       </header>

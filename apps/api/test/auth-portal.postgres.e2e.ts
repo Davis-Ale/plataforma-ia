@@ -210,11 +210,6 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     expect(await browser.evaluate<boolean>('Array.from(document.querySelectorAll("button")).some(button => button.textContent === "Retomar execução")')).toBe(false);
     await browser.evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Verificar interrupção").click()');
     await browser.waitFor('!Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Verificar interrupção").disabled');
-    if (process.env.PORTAL_QA_ARTIFACT_DIR) {
-      await mkdir(process.env.PORTAL_QA_ARTIFACT_DIR, { recursive: true });
-      const screenshot = await browser.capturePage();
-      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-execution-integrity.png"), Buffer.from(screenshot.data, "base64"));
-    }
 
     delayDetail = true;
     await clickRun("portal.qa.1");
@@ -238,12 +233,6 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await clickRun("portal.qa.2");
     await browser.waitFor(has("qa_step_2"));
 
-    const artifact = process.env.PORTAL_QA_ARTIFACT_DIR;
-    if (artifact) {
-      await mkdir(artifact, { recursive: true });
-      const screenshot = await browser.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
-      await writeFile(join(artifact, "portal-company-b.png"), Buffer.from(screenshot.data, "base64"));
-    }
     await prisma!.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
     await browser.evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Atualizar").click()');
     await browser.waitFor('!!document.querySelector("input[type=email]")');
@@ -285,14 +274,31 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     expect(await prisma!.workflowCheckpoint.findUnique({ where: { workflowStepId: completedRead.workflowStepId } })).toMatchObject({ state: "COMPLETED", attemptCount: 1 });
     expect(await browser.evaluate<boolean>('document.body.innerText.includes("Demonstração com adaptador simulado")')).toBe(true);
     expect(await browser.evaluate<boolean>('document.body.innerText.includes("Resolvido")')).toBe(true);
+    await browser.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await browser.waitFor('window.innerWidth === 390');
+    expect(await browser.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+  });
+
+  it("shows the empty account without invented visible identities or business records", async () => {
+    await prisma!.companyUser.updateMany({ where: { userId }, data: { status: "INACTIVE" } });
+    await prisma!.user.update({ where: { id: userId }, data: { name: "" } });
+    await browser.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await browser.send("Page.reload");
+    await browser.waitFor('document.querySelector(".topbar h1")?.textContent === "Sem empresa ativa"');
+    expect(await browser.evaluate<number>('document.querySelectorAll("button.run-row").length')).toBe(0);
+    expect(await browser.evaluate<boolean>('document.body.innerText.includes("Portal QA") || document.body.innerText.includes("portal.qa")')).toBe(false);
+    expect(await browser.evaluate<boolean>('!!document.querySelector(".user-name")')).toBe(false);
+    expect(await browser.evaluate<boolean>(`document.querySelector('select[aria-label="Filtrar por status"]').disabled`)).toBe(true);
     if (process.env.PORTAL_QA_ARTIFACT_DIR) {
-      const screenshot = await browser.capturePage();
-      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-recovered-execution.png"), Buffer.from(screenshot.data, "base64"));
-      await browser.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-      await browser.waitFor('window.innerWidth === 390');
-      expect(await browser.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+      const desktop = await browser.capturePage();
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-empty-desktop.png"), Buffer.from(desktop.data, "base64"));
+    }
+    await browser.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await browser.waitFor('window.innerWidth === 390');
+    expect(await browser.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+    if (process.env.PORTAL_QA_ARTIFACT_DIR) {
       const mobile = await browser.capturePage();
-      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-recovered-mobile.png"), Buffer.from(mobile.data, "base64"));
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-empty-mobile.png"), Buffer.from(mobile.data, "base64"));
     }
   });
 });
