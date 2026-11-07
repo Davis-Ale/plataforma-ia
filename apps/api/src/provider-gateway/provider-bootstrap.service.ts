@@ -73,7 +73,6 @@ export class ProviderBootstrapService implements OnModuleInit {
     if (this.models.route(companyId, capability)) {
       return;
     }
-    const isOperationQuestion = capability === OPERATION_QUESTION_CAPABILITY;
     const policy: ModelRoutingPolicy = Object.freeze({
       companyId,
       capability,
@@ -86,9 +85,9 @@ export class ProviderBootstrapService implements OnModuleInit {
       currency: "USD",
       maxCostMicros: 50_000,
       maxLatencyMs: 30_000,
-      maxInputTokens: isOperationQuestion ? 512 : 4_000,
-      maxOutputTokens: isOperationQuestion ? 24 : 1_000,
-      maxOutputBytes: isOperationQuestion ? 128 : 8_000,
+      maxInputTokens: 4_000,
+      maxOutputTokens: 1_000,
+      maxOutputBytes: 8_000,
       instruction,
     });
     this.models.registerPolicy(policy);
