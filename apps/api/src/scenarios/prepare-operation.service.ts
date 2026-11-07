@@ -83,12 +83,12 @@ export class PrepareOperationService {
           output = checkpoint.step.output;
         } else {
           if (!token) return failure("EXECUTION_FAILED");
-          const adapter = definition.integrationKind === "contracts" ? await this.integrations.resolveContracts(context.companyId)
-            : definition.integrationKind === "operations" ? await this.integrations.resolveOperations(context.companyId)
-            : await this.integrations.resolvePeople(context.companyId);
+          const adapter = await (definition.integrationKind === "contracts" ? this.integrations.resolveContracts(context.companyId)
+            : definition.integrationKind === "operations" ? this.integrations.resolveOperations(context.companyId)
+            : this.integrations.resolvePeople(context.companyId)).catch(() => undefined);
           if (!adapter || (checkpoint.adapterKey && checkpoint.adapterKey !== adapter.key)) {
             await this.integrity.halt(context, runId, token, checkpoint.workflowStepId, "INTEGRATION_UNAVAILABLE");
-            return failure("INTEGRATION_UNAVAILABLE");
+            return { ...failure("INTEGRATION_UNAVAILABLE"), failedStep: definition.stepKey, failedCapabilityKey: definition.capabilityKey };
           }
           await this.integrity.dispatch(context, runId, token, checkpoint.workflowStepId, adapter.key, adapter.replaySafety ?? "MANUAL");
           let result: CapabilityResult;

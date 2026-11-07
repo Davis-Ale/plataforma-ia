@@ -157,7 +157,9 @@ export class ExecutionIntegrityService {
         if (!checkpoint || checkpoint.state === "COMPLETED") throw new ConflictException("Completed step cannot be changed");
         const state: WorkflowCheckpointState = code === "APPROVAL_REQUIRED" ? "APPROVAL_REQUIRED"
           : code === "EXECUTION_FAILED" ? "UNKNOWN" : "DENIED";
-        await tx.workflowCheckpoint.update({ where: { workflowStepId: stepId }, data: { state, approvalId: approvalId ?? null } });
+        if (code !== "INTEGRATION_UNAVAILABLE" || checkpoint.state !== "APPROVAL_REQUIRED") {
+          await tx.workflowCheckpoint.update({ where: { workflowStepId: stepId }, data: { state, approvalId: approvalId ?? null } });
+        }
         await tx.workflowStep.update({ where: { id: stepId }, data: { status: "FAILED", error: code, completedAt: new Date() } });
       }
       await this.incident(tx, context, execution, stepId, code);

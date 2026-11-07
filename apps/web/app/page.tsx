@@ -561,7 +561,7 @@ export default function Home() {
                 <div><dt>Duração</dt><dd>{duration(selected.startedAt, selected.completedAt)}</dd></div>
               </dl>
 
-              {selected.error ? <div className="error-block">{selected.error}</div> : null}
+              {selected.error ? <div className="error-block">{selected.execution ? recoveryMessage(selected.error) : selected.error}</div> : null}
 
               {selected.execution ? (
                 <section aria-label="Integridade da execução">

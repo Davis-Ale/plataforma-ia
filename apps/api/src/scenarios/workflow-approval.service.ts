@@ -100,7 +100,10 @@ export class WorkflowApprovalService {
       const { run, checkpoints } = execution;
       if (approval.status === "REJECTED") {
         if (execution.state !== "FAILED" || run.error !== "APPROVAL_REJECTED") return null;
-      } else if (execution.state !== "WAITING" || execution.attemptCount >= execution.maxAttempts) return null;
+      } else {
+        const blockedBeforeDispatch = approval.status === "APPROVED" && execution.state === "FAILED" && run.error === "INTEGRATION_UNAVAILABLE";
+        if ((execution.state !== "WAITING" && !blockedBeforeDispatch) || execution.attemptCount >= execution.maxAttempts) return null;
+      }
       if (run.companyId !== approval.companyId || run.status !== "FAILED" || run.workflowKey !== PREPARE_OPERATION_WORKFLOW_KEY ||
         execution.workflowVersion !== PREPARE_OPERATION_VERSION || checkpoints.length !== PREPARE_OPERATION_STEPS.length) return null;
       const index = checkpoints.findIndex((item) => item.workflowStepId === checkpoint.workflowStepId);

@@ -144,6 +144,28 @@ describe("Operational workflow approvals with PostgreSQL and Chrome", () => {
     expect((await list(requester, "APPROVED")).body.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: item.id, canDecide: false })]));
   });
 
+  it("preserves an approved decision through an integration lookup failure before dispatch", async () => {
+    const item = await pending();
+    const workflowRunId = item.review!.workflowRunId;
+    expect((await decide(item.id, item.review!.token)).status).toBe(200);
+    const lookup = jest.spyOn(app!.get(IntegrationResolver), "resolveOperations").mockRejectedValueOnce(new Error("lookup unavailable"));
+    const scenario = app!.get(PrepareOperationService);
+    try {
+      expect(await scenario.resume(requester.context, workflowRunId)).toMatchObject({ success: false, error: "INTEGRATION_UNAVAILABLE" });
+    } finally {
+      lookup.mockRestore();
+    }
+    expect(plans).toBe(0);
+    expect(await prisma.workflowCheckpoint.findFirst({ where: { workflowRunId, capabilityKey: "operations.plan" } }))
+      .toMatchObject({ state: "APPROVAL_REQUIRED", approvalId: item.id, attemptCount: 1 });
+    expect((await list(requester, "APPROVED")).body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: item.id, review: expect.objectContaining({ workflowRunId }), canDecide: false }),
+    ]));
+    expect(await scenario.resume(requester.context, workflowRunId)).toMatchObject({ success: true });
+    expect(plans).toBe(1);
+    expect(await prisma.capabilityApproval.findUnique({ where: { id: item.id } })).toMatchObject({ status: "CONSUMED" });
+  });
+
   it("rejects self-decision, unrelated members, foreign tenants and caller-controlled identity", async () => {
     const item = await pending();
     expect((await list(other)).body.items).toHaveLength(0);
