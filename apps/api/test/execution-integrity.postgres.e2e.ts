@@ -109,6 +109,28 @@ describe("Execution integrity with isolated PostgreSQL", () => {
     expect(await prisma.workflowExecution.findUnique({ where: { workflowRunId: failed.workflowRunId } })).toMatchObject({ simulated: true, attemptCount: 2 });
   });
 
+  it("halts when a binding lookup fails and resumes without repeating the completed step", async () => {
+    const lookup = jest.spyOn(resolver, "resolveOperations").mockRejectedValueOnce(new Error("binding lookup failed"));
+    const input = { contractExternalRef: "ATLAS", operationId: randomUUID() };
+    let runId: string;
+    try {
+      const result = await scenario.run(context, input);
+      expect(result).toMatchObject({ success: false, error: "INTEGRATION_UNAVAILABLE", failedStep: "plan_operations" });
+      runId = result.workflowRunId!;
+    } finally {
+      lookup.mockRestore();
+    }
+
+    expect(calls).toEqual({ contracts: 1, operations: 0, people: 0 });
+    expect(await prisma.workflowExecution.findUnique({ where: { workflowRunId: runId } })).toMatchObject({ state: "FAILED", leaseToken: null });
+    expect(await prisma.workflowCheckpoint.findFirst({ where: { workflowRunId: runId, capabilityKey: "operations.plan" } })).toMatchObject({ attemptCount: 0 });
+    expect(await prisma.workflowIncident.count({ where: { workflowRunId: runId, code: "INTEGRATION_UNAVAILABLE", resolvedAt: null } })).toBe(1);
+
+    expect(await scenario.resume(context, runId)).toMatchObject({ success: true });
+    expect(calls).toEqual({ contracts: 1, operations: 1, people: 1 });
+    expect(await prisma.workflowIncident.count({ where: { workflowRunId: runId, code: "INTEGRATION_UNAVAILABLE", resolvedAt: { not: null } } })).toBe(1);
+  });
+
   it("persists uncertain incidents when recovery is blocked and rejects stale completion", async () => {
     const run = await open();
     await expire(run.id);
