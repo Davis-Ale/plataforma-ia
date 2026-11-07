@@ -88,7 +88,7 @@ export class PrepareOperationService {
             : this.integrations.resolvePeople(context.companyId)).catch(() => undefined);
           if (!adapter || (checkpoint.adapterKey && checkpoint.adapterKey !== adapter.key)) {
             await this.integrity.halt(context, runId, token, checkpoint.workflowStepId, "INTEGRATION_UNAVAILABLE");
-            return failure("INTEGRATION_UNAVAILABLE");
+            return { ...failure("INTEGRATION_UNAVAILABLE"), failedStep: definition.stepKey, failedCapabilityKey: definition.capabilityKey };
           }
           await this.integrity.dispatch(context, runId, token, checkpoint.workflowStepId, adapter.key, adapter.replaySafety ?? "MANUAL");
           let result: CapabilityResult;
