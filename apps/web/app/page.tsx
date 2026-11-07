@@ -155,6 +155,8 @@ export default function Home() {
   const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
   const [selected, setSelected] = useState<WorkflowDetail | null>(null);
   const [status, setStatus] = useState<WorkflowStatus | "">("");
+  const [operationDraft, setOperationDraft] = useState("");
+  const [operationId, setOperationId] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [workflowsLoading, setWorkflowsLoading] = useState(false);
@@ -184,12 +186,14 @@ export default function Home() {
     setWorkflows([]);
     setSelected(null);
     setStatus("");
+    setOperationDraft("");
+    setOperationId("");
     setWorkflowsLoading(false);
     setDetailLoading(false);
     setLoading(false);
   }, []);
 
-  const loadWorkflows = useCallback(async (currentCompanyId: string, currentStatus = "") => {
+  const loadWorkflows = useCallback(async (currentCompanyId: string, currentStatus = "", currentOperationId = "") => {
     actionRequests.current.cancel();
     setActionLoading(false);
     const pending = workflowRequests.current.start();
@@ -206,6 +210,9 @@ export default function Home() {
     const params = new URLSearchParams({ companyId: currentCompanyId });
     if (currentStatus) {
       params.set("status", currentStatus);
+    }
+    if (currentOperationId) {
+      params.set("operationId", currentOperationId);
     }
     try {
       const response = await fetch(`/api/workflows?${params.toString()}`, {
@@ -371,6 +378,8 @@ export default function Home() {
 
   async function changeCompany(nextCompanyId: string) {
     setCompanyId(nextCompanyId);
+    setOperationDraft("");
+    setOperationId("");
     setSelected(null);
     await loadWorkflows(nextCompanyId, status);
   }
@@ -378,7 +387,14 @@ export default function Home() {
   async function changeStatus(nextStatus: WorkflowStatus | "") {
     setStatus(nextStatus);
     setSelected(null);
-    await loadWorkflows(companyId, nextStatus);
+    await loadWorkflows(companyId, nextStatus, operationId);
+  }
+
+  async function searchOperation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextOperationId = operationDraft.trim();
+    setOperationId(nextOperationId);
+    await loadWorkflows(companyId, status, nextOperationId);
   }
 
   async function executionAction(action: "inspect" | "resume") {
@@ -489,6 +505,12 @@ export default function Home() {
           <h2>Execuções</h2>
         </div>
         <div className="toolbar-actions">
+          <form className="operation-search" onSubmit={(event) => void searchOperation(event)}>
+            <input type="search" aria-label="Identificador da operação" placeholder="Identificador da operação"
+              maxLength={255} value={operationDraft} onChange={(event) => setOperationDraft(event.target.value)}
+              disabled={loading || !companyId} />
+            <button className="secondary" type="submit" disabled={loading || !companyId}>Buscar</button>
+          </form>
           <select value={status} disabled={loading || !companyId} onChange={(event: ChangeEvent<HTMLSelectElement>) => void changeStatus(event.target.value as WorkflowStatus | "")} aria-label="Filtrar por status">
             <option value="">Todos os status</option>
             <option value="PENDING">Pendentes</option>
@@ -497,7 +519,7 @@ export default function Home() {
             <option value="FAILED">Falhas e bloqueios</option>
             <option value="CANCELLED">Canceladas</option>
           </select>
-          <button className="secondary" type="button" disabled={loading || !companyId} onClick={() => void loadWorkflows(companyId, status)}>Atualizar</button>
+          <button className="secondary" type="button" disabled={loading || !companyId} onClick={() => void loadWorkflows(companyId, status, operationId)}>Atualizar</button>
         </div>
       </section>
 
@@ -511,8 +533,8 @@ export default function Home() {
             <div className="empty-state"><strong>Nenhuma empresa ativa</strong></div>
           ) : workflows.length === 0 ? (
             <div className="empty-state">
-              <strong>Nenhuma execução registrada</strong>
-              <span>As execuções registradas para esta empresa aparecerão aqui.</span>
+              <strong>{operationId ? "Nenhuma execução encontrada para esta operação" : "Nenhuma execução registrada"}</strong>
+              <span>{operationId ? "Confira o identificador e os filtros da empresa ativa." : "As execuções registradas para esta empresa aparecerão aqui."}</span>
             </div>
           ) : workflows.map((run) => (
             <button

@@ -64,6 +64,7 @@ export class WorkflowsService {
       query.status,
       skip,
       limit,
+      query.operationId?.trim() || undefined,
     );
 
     return {

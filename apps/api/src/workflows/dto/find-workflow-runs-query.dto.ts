@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  MaxLength,
 } from "class-validator";
 
 export class FindWorkflowRunsQueryDto {
@@ -17,4 +18,9 @@ export class FindWorkflowRunsQueryDto {
   @IsOptional()
   @IsEnum(WorkflowStatus)
   declare status?: WorkflowStatus;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  declare operationId?: string;
 }

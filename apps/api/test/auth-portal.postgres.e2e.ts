@@ -230,6 +230,23 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await delay(700);
     expect(await browser.evaluate<boolean>(has("portal.qa.1"))).toBe(false);
     delayCompany = undefined;
+    const searchOperation = async (operationId: string) => {
+      await browser.evaluate(`(() => {
+        const input = document.querySelector(".operation-search input");
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(operationId)});
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      })()`);
+      await browser.evaluate('document.querySelector(".operation-search").requestSubmit()');
+    };
+    const runs = await prisma!.workflowRun.findMany({
+      where: { id: { in: [runIds.get(companyA)!, runIds.get(companyB)!] } },
+      select: { companyId: true, operationId: true },
+    });
+    await searchOperation(runs.find((run) => run.companyId === companyA)!.operationId);
+    await browser.waitFor(has("Nenhuma execução encontrada para esta operação"));
+    expect(await browser.evaluate<boolean>(has("portal.qa.1"))).toBe(false);
+    await searchOperation(` ${runs.find((run) => run.companyId === companyB)!.operationId} `);
+    await browser.waitFor(has("portal.qa.2"));
     await clickRun("portal.qa.2");
     await browser.waitFor(has("qa_step_2"));
 
