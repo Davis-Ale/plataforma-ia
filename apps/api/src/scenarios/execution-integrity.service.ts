@@ -72,9 +72,10 @@ export class ExecutionIntegrityService {
       for (const checkpoint of execution.checkpoints.filter((item) => item.state === "APPROVAL_REQUIRED")) {
         const approval = checkpoint.approvalId && await tx.capabilityApproval.findFirst({ where: {
           id: checkpoint.approvalId, companyId: context.companyId, requestedByUserId: context.userId,
-          capabilityKey: checkpoint.capabilityKey, purpose: "EXECUTION", status: "APPROVED",
+          capabilityKey: checkpoint.capabilityKey, purpose: "EXECUTION",
         } });
-        if (!approval) return { execution, token: null, blocked: "APPROVAL_REQUIRED" as const };
+        if (approval && approval.status === "REJECTED") return { execution, token: null, blocked: "APPROVAL_REJECTED" as const };
+        if (!approval || approval.status !== "APPROVED") return { execution, token: null, blocked: "APPROVAL_REQUIRED" as const };
       }
       const token = randomUUID();
       await tx.workflowExecution.update({ where: { workflowRunId: runId }, data: {

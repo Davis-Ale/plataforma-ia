@@ -2,20 +2,11 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuthorizationGateway } from "../capabilities/authorization-gateway.service";
 import { CapabilityContext, CapabilityRequest, CapabilityResult } from "../capabilities/capability.types";
-import { CONTRACTS_READ_KEY } from "../integrations/contracts-read.capability";
-import { OPERATIONS_PLAN_KEY } from "../integrations/operations-plan.capability";
-import { PEOPLE_CAPACITY_CHECK_KEY } from "../integrations/people-capacity.capability";
 import { IntegrationResolver } from "../integrations/integration-resolver.service";
-import { ContractsReadOutput, OperationsPlanOutput } from "../integrations/integration.types";
 import { ExecutionIntegrityService } from "./execution-integrity.service";
+import { PREPARE_OPERATION_WORKFLOW_KEY, PREPARE_OPERATION_VERSION, PREPARE_OPERATION_STEPS as plan, prepareOperationStepInput } from "./prepare-operation.definition";
+export { PREPARE_OPERATION_WORKFLOW_KEY, PREPARE_OPERATION_VERSION } from "./prepare-operation.definition";
 
-export const PREPARE_OPERATION_WORKFLOW_KEY = "operations.prepare_from_contract";
-export const PREPARE_OPERATION_VERSION = "1";
-const plan = [
-  { stepKey: "read_contract", capabilityKey: CONTRACTS_READ_KEY, integrationKind: "contracts" },
-  { stepKey: "plan_operations", capabilityKey: OPERATIONS_PLAN_KEY, integrationKind: "operations" },
-  { stepKey: "check_capacity", capabilityKey: PEOPLE_CAPACITY_CHECK_KEY, integrationKind: "people" },
-] as const;
 
 export type PrepareOperationInput = Readonly<{ contractExternalRef: string; operationId: string }>;
 type CompletedStep = Readonly<{
@@ -79,11 +70,7 @@ export class PrepareOperationService {
           if (token) await this.integrity.halt(context, runId, token, null, "EXECUTION_FAILED");
           return failure("EXECUTION_FAILED");
         }
-        const contract = outputs[0] as ContractsReadOutput;
-        const operation = outputs[1] as OperationsPlanOutput;
-        const input = index === 0 ? { externalRef: runInput.contractExternalRef }
-          : index === 1 ? { contractExternalRef: contract.externalRef, contractName: contract.name, clientName: contract.clientName, startDate: contract.startDate }
-          : { planId: operation.planId, workstreams: operation.workstreams, targetStartDate: operation.targetStartDate };
+        const input = prepareOperationStepInput(index, runInput, outputs);
         const request = { capability: definition.capabilityKey, input,
           ...(checkpoint.state === "APPROVAL_REQUIRED" && checkpoint.approvalId ? { approvalId: checkpoint.approvalId } : {}) };
         requests.push(request);

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { Capability } from "./capability.types";
+import { Capability, CapabilityRole } from "./capability.types";
 import { snapshotContextPolicy } from "../context-engine/context-engine";
 import { ContextPolicy } from "../context-engine/context.types";
 
@@ -65,5 +65,10 @@ export class CapabilityRegistry {
 
   resolve(key: string): Capability | undefined {
     return this.capabilities.get(key);
+  }
+
+  approvalKeysFor(role: CapabilityRole): readonly string[] {
+    return [...this.capabilities.values()].filter((capability) => capability.approval?.mode === "REQUIRED" &&
+      capability.approval.approverRoles.includes(role)).map((capability) => capability.key);
   }
 }

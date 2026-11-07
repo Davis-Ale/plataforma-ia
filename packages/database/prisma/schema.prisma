@@ -634,6 +634,7 @@ model WorkflowCheckpoint {
   execution WorkflowExecution @relation(fields: [workflowRunId, companyId], references: [workflowRunId, companyId], onDelete: Cascade)
 
   @@unique([workflowStepId, companyId])
+  @@unique([approvalId, companyId])
   @@index([companyId, workflowRunId])
   @@map("workflow_checkpoints")
 }

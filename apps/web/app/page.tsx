@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RequestScope } from "../lib/request-scope";
 import { PortalShell } from "../components/portal-shell";
+import { WorkflowApprovals } from "../components/workflow-approvals";
 
 type CompanyMembership = {
   id: string;
@@ -95,6 +96,12 @@ function stepLabel(key: string) {
   return labels[key] ?? key;
 }
 
+function executionStatus(run: { status: WorkflowStatus; error: string | null }) {
+  if (run.status === "FAILED" && run.error === "APPROVAL_REQUIRED") return { label: "Aguardando aprovação", className: "status-pending" };
+  if (run.status === "FAILED" && run.error === "APPROVAL_REJECTED") return { label: "Rejeitada", className: "status-failed" };
+  return { label: statusLabel[run.status], className: `status-${run.status.toLowerCase()}` };
+}
+
 function formatDate(value: string | null) {
   if (!value) {
     return "—";
@@ -112,6 +119,7 @@ function recoveryMessage(code: string) {
     EXECUTION_IN_PROGRESS: "Já existe uma tentativa em andamento.",
     RECONCILIATION_REQUIRED: "Resultado externo desconhecido. Confira o efeito antes de retomar.",
     APPROVAL_REQUIRED: "A execução aguarda aprovação humana.",
+    APPROVAL_REJECTED: "A solicitação foi rejeitada. Esta execução não pode ser retomada com essa decisão.",
     ATTEMPT_LIMIT: "O limite de tentativas foi atingido.",
     DENIED: "A autorização atual não permite esta execução.",
     CHECKPOINT_ACCESS_DENIED: "O acesso atual não permite reutilizar uma etapa concluída.",
@@ -140,6 +148,7 @@ function duration(startedAt: string | null, completedAt: string | null) {
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
+  const [view, setView] = useState<"executions" | "approvals">("executions");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [companyId, setCompanyId] = useState("");
@@ -170,6 +179,7 @@ export default function Home() {
     actionRequests.current.cancel();
     setActionLoading(false);
     setUser(null);
+    setView("executions");
     setCompanyId("");
     setWorkflows([]);
     setSelected(null);
@@ -448,7 +458,7 @@ export default function Home() {
   }
 
   return (
-    <PortalShell>
+    <PortalShell view={view} onNavigate={setView}>
       <header className="topbar">
         <div>
           <p className="eyebrow">Empresa ativa</p>
@@ -471,6 +481,8 @@ export default function Home() {
         </div>
       </header>
 
+      {view === "approvals" ? <WorkflowApprovals key={companyId} companyId={companyId} onSessionExpired={resetSession}
+        onOpenRun={(id) => { setView("executions"); void loadDetail(id); }} /> : <>
       <section className="toolbar" id="execucoes" tabIndex={-1}>
         <div>
           <p className="section-kicker">Visão operacional</p>
@@ -482,7 +494,7 @@ export default function Home() {
             <option value="PENDING">Pendentes</option>
             <option value="RUNNING">Em execução</option>
             <option value="COMPLETED">Concluídas</option>
-            <option value="FAILED">Falhas</option>
+            <option value="FAILED">Falhas e bloqueios</option>
             <option value="CANCELLED">Canceladas</option>
           </select>
           <button className="secondary" type="button" disabled={loading || !companyId} onClick={() => void loadWorkflows(companyId, status)}>Atualizar</button>
@@ -511,7 +523,7 @@ export default function Home() {
               onClick={() => void loadDetail(run.id)}
             >
               <div className="run-main">
-                <span className={`status status-${run.status.toLowerCase()}`}>{statusLabel[run.status]}</span>
+                <span className={`status ${executionStatus(run).className}`}>{executionStatus(run).label}</span>
                 <strong>{workflowLabel(run.workflowKey)}</strong>
                 <span className="muted">Operação {run.operationId}</span>
               </div>
@@ -538,7 +550,7 @@ export default function Home() {
                   <p className="section-kicker">Execução</p>
                   <h2>{workflowLabel(selected.workflowKey)}</h2>
                 </div>
-                <span className={`status status-${selected.status.toLowerCase()}`}>{statusLabel[selected.status]}</span>
+                <span className={`status ${executionStatus(selected).className}`}>{executionStatus(selected).label}</span>
               </div>
 
               <dl className="facts">
@@ -563,7 +575,7 @@ export default function Home() {
                   {selected.execution.checkpoints.some((item) => item.state === "UNKNOWN" && item.replaySafety === "MANUAL") ? (
                     <p className="error-block">Resultado externo desconhecido. A retomada está bloqueada até a conferência do efeito no sistema de origem.</p>
                   ) : null}
-                  {selected.execution.requestedByUserId === user.id && selected.status !== "CANCELLED" && selected.execution.state !== "COMPLETED" ? (
+                  {selected.execution.requestedByUserId === user.id && selected.status !== "CANCELLED" && selected.execution.state !== "COMPLETED" && selected.error !== "APPROVAL_REJECTED" ? (
                     <div className="toolbar-actions">
                       <button className="secondary" type="button" disabled={actionLoading} onClick={() => void executionAction("inspect")}>Verificar interrupção</button>
                       {selected.execution.state !== "RUNNING" && selected.execution.attemptCount < selected.execution.maxAttempts &&
@@ -591,7 +603,7 @@ export default function Home() {
                     <div className="step-body">
                       <div className="step-title">
                         <strong>{stepLabel(step.stepKey)}</strong>
-                        <span className={`status status-${step.status.toLowerCase()}`}>{statusLabel[step.status]}</span>
+                        <span className={`status ${executionStatus(step).className}`}>{executionStatus(step).label}</span>
                       </div>
                       <div className="step-time">
                         <span>{formatDate(step.startedAt)}</span>
@@ -606,6 +618,7 @@ export default function Home() {
           )}
         </aside>
       </div>
+      </>}
     </PortalShell>
   );
 }

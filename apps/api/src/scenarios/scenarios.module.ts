@@ -8,11 +8,13 @@ import { PrepareOperationService } from "./prepare-operation.service";
 import { ScenariosController } from "./scenarios.controller";
 import { ExecutionIntegrityService } from "./execution-integrity.service";
 import { ExecutionRecoveryController } from "./execution-recovery.controller";
+import { WorkflowApprovalService } from "./workflow-approval.service";
+import { WorkflowApprovalController } from "./workflow-approval.controller";
 
 @Module({
   imports: [DatabaseModule, AuthModule, CapabilitiesModule, IntegrationsModule, WorkflowsModule],
-  controllers: [ScenariosController, ExecutionRecoveryController],
-  providers: [PrepareOperationService, ExecutionIntegrityService],
+  controllers: [ScenariosController, ExecutionRecoveryController, WorkflowApprovalController],
+  providers: [PrepareOperationService, ExecutionIntegrityService, WorkflowApprovalService],
   exports: [PrepareOperationService],
 })
 export class ScenariosModule {}
