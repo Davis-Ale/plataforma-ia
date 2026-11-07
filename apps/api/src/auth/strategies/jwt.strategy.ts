@@ -25,8 +25,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(request: AuthenticatedRequest, payload: JwtPayload) {
     const validPayload =
-      payload.type === "access" &&
-      payload.sessionId.trim().length > 0;
+      payload?.type === "access" &&
+      [payload.sub, payload.email, payload.sessionId].every(
+        (value) => typeof value === "string" && value.trim().length > 0,
+      );
 
     if (validPayload === false) {
       throw new UnauthorizedException("Invalid token");

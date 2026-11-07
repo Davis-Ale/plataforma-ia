@@ -54,6 +54,10 @@ describe("JwtStrategy session propagation", () => {
   it.each([
     ["refresh token", { ...payload, type: "refresh" as const }],
     ["blank sessionId", { ...payload, sessionId: " " }],
+    ["missing sessionId", { ...payload, sessionId: undefined } as unknown as JwtPayload],
+    ["non-string sessionId", { ...payload, sessionId: 42 } as unknown as JwtPayload],
+    ["missing user identity", { ...payload, sub: undefined } as unknown as JwtPayload],
+    ["missing email", { ...payload, email: undefined } as unknown as JwtPayload],
   ])("rejects %s before session lookup and does not set request.sessionId", async (_label, invalidPayload) => {
     await expect(strategy.validate(request, invalidPayload)).rejects.toBeInstanceOf(
       UnauthorizedException,

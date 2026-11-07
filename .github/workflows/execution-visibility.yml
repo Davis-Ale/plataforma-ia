@@ -6,6 +6,10 @@ on:
   pull_request:
     paths:
       - "apps/web/**"
+      - "apps/api/src/auth/**"
+      - "apps/api/test/**"
+      - "tests/portal/**"
+      - "tests/jest.portal.config.cjs"
       - "apps/api/src/workflows/**"
       - "packages/workflows/src/**"
       - "pnpm-lock.yaml"
@@ -14,6 +18,18 @@ on:
 jobs:
   validation:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: portal-ci-password
+          POSTGRES_DB: plataforma_portal_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d plataforma_portal_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,9 +50,48 @@ jobs:
           pnpm --filter @plataforma/workflows build
       - name: Check workflow tests
         run: pnpm --filter @plataforma/api test -- workflows.service.spec.ts workflows.visibility.spec.ts workflows.controller.spec.ts
+      - name: Check authentication tests
+        run: pnpm --filter @plataforma/api test -- auth-token.service.spec.ts jwt.strategy.spec.ts auth-session.http.spec.ts
+      - name: Check portal request lifecycle
+        run: pnpm --filter @plataforma/api exec jest --config ../../tests/jest.portal.config.cjs --runInBand
       - name: Build API
         run: pnpm --filter @plataforma/api build
       - name: Check portal types
         run: pnpm --filter @plataforma/web lint
       - name: Build portal
         run: pnpm --filter @plataforma/web build
+      - name: Validate portal with PostgreSQL and Chrome
+        env:
+          CI: "true"
+          DATABASE_URL: postgresql://postgres:portal-ci-password@127.0.0.1:5432/plataforma_portal_ci?schema=public
+          PORTAL_TEST_DATABASE_URL: postgresql://postgres:portal-ci-password@127.0.0.1:5432/plataforma_portal_ci?schema=public
+          JWT_SECRET: portal-ci-access-secret
+          JWT_REFRESH_SECRET: portal-ci-refresh-secret
+          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          PORTAL_QA_ARTIFACT_DIR: ${{ runner.temp }}/portal-qa
+        run: |
+          export CHROME_BIN="$(command -v google-chrome)"
+          test -n "$CHROME_BIN"
+          "$CHROME_BIN" --version
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-first-run --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/plataforma-browser" about:blank > "$RUNNER_TEMP/portal-chrome.log" 2>&1 &
+          browser_pid=$!
+          trap 'kill "$browser_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..100}; do
+            if curl --fail --silent http://127.0.0.1:9222/json/version > /dev/null; then break; fi
+            sleep 0.1
+          done
+          if ! curl --fail --silent http://127.0.0.1:9222/json/version; then
+            cat "$RUNNER_TEMP/portal-chrome.log"
+            exit 1
+          fi
+          export CHROME_DEBUGGING_PORT=9222
+          pnpm --filter @plataforma/database exec prisma db push --skip-generate
+          pnpm --filter @plataforma/api exec jest --config test/jest-portal-e2e.cjs --runInBand
+      - name: Preserve portal inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-qa
+          path: ${{ runner.temp }}/portal-qa
+          if-no-files-found: ignore
