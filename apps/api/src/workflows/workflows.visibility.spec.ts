@@ -76,6 +76,7 @@ describe("Workflow execution visibility", () => {
       page: "2",
       limit: "500",
       status: WorkflowStatus.COMPLETED,
+      operationId: " operation-a ",
     });
 
     expect(repository.findRuns).toHaveBeenCalledWith(
@@ -83,6 +84,7 @@ describe("Workflow execution visibility", () => {
       WorkflowStatus.COMPLETED,
       100,
       100,
+      "operation-a",
     );
     expect(result).toEqual({
       items: [listItem],

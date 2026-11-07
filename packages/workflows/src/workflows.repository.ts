@@ -85,10 +85,12 @@ export class WorkflowsRepository {
     status: WorkflowStatus | undefined,
     skip: number,
     take: number,
+    operationId?: string,
   ) {
     const where: Prisma.WorkflowRunWhereInput = {
       companyId,
       status,
+      operationId,
     };
 
     return Promise.all([

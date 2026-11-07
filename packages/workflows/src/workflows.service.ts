@@ -105,12 +105,14 @@ export class WorkflowsService {
     status: WorkflowStatus | undefined,
     skip: number,
     take: number,
+    operationId?: string,
   ) {
     return this.workflowsRepository.findRuns(
       companyId,
       status,
       skip,
       take,
+      operationId,
     );
   }
 
