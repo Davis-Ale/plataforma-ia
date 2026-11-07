@@ -20,6 +20,7 @@ import { IntegrationRegistry } from "../src/integrations/integration-registry.se
 import { IntegrationResolver } from "../src/integrations/integration-resolver.service";
 import { createDemoOperationsAdapter } from "../src/integrations/demo/demo-operations.adapter";
 import { BrowserClient } from "./browser-client";
+import { GenerationService } from "../src/provider-gateway/generation.service";
 
 describe("Portal authentication with PostgreSQL and Chrome", () => {
   const password = "portal-e2e-password";
@@ -117,6 +118,27 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     const foreign = await request(app!.getHttpServer()).get("/api/v1/workflows")
       .auth(tokens.accessToken, { type: "bearer" }).set("X-Company-Id", companyForeign);
     expect(foreign.status).toBe(403);
+  });
+
+  it("checks the selected run and tenant before interpreting a status question", async () => {
+    const { accessToken } = await login();
+    const generate = jest.spyOn(app!.get(GenerationService), "generate");
+    const ask = (id: string, companyId: string, body: Record<string, string>) =>
+      request(app!.getHttpServer()).post(`/api/v1/workflows/${id}/question`)
+        .auth(accessToken, { type: "bearer" }).set("X-Company-Id", companyId).send(body);
+    const question = { question: "Qual é o status?" };
+    try {
+      expect((await ask(runIds.get(companyB)!, companyA, question)).status).toBe(404);
+      expect((await ask(runIds.get(companyForeign)!, companyForeign, question)).status).toBe(403);
+      expect((await ask(runIds.get(companyA)!, companyA, { ...question, status: "COMPLETED" })).status).toBe(400);
+      expect(generate).not.toHaveBeenCalled();
+
+      const disabled = await ask(runIds.get(companyA)!, companyA, question);
+      expect(disabled.status).toBe(200);
+      expect(disabled.body).toEqual({ success: false, error: "PROVIDER_UNAVAILABLE" });
+    } finally {
+      generate.mockRestore();
+    }
   });
 
   it("atomically rotates a persisted session and rejects concurrent reuse", async () => {
@@ -249,6 +271,22 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await browser.waitFor(has("portal.qa.2"));
     await clickRun("portal.qa.2");
     await browser.waitFor(has("qa_step_2"));
+
+    const interpret = jest.spyOn(app!.get(GenerationService), "generate").mockResolvedValueOnce({
+      success: true, companyId: companyB, correlationId: randomUUID(), output: "STATUS",
+    });
+    try {
+      await browser.evaluate(`(() => {
+        const field = document.querySelector('input[aria-label="Pergunta sobre o status"]');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(field, "Em que situação está esta operação?");
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      })()`);
+      await browser.evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Perguntar à IA").click()');
+      await browser.waitFor(has("Status registrado: Concluída"));
+      expect(interpret).toHaveBeenCalledTimes(1);
+    } finally {
+      interpret.mockRestore();
+    }
 
     await prisma!.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
     await browser.evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Atualizar").click()');

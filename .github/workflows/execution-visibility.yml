@@ -57,7 +57,7 @@ jobs:
       - name: Check authentication tests
         run: pnpm --filter @plataforma/api test -- auth-token.service.spec.ts jwt.strategy.spec.ts auth-session.http.spec.ts
       - name: Check execution authorization and integrations
-        run: pnpm --filter @plataforma/api test -- --runInBand authorization-gateway.service.spec.ts integration-resolver.spec.ts integration-registry.spec.ts prepare-operation.service.spec.ts scenarios.controller.spec.ts
+        run: pnpm --filter @plataforma/api test -- --runInBand authorization-gateway.service.spec.ts integration-resolver.spec.ts integration-registry.spec.ts prepare-operation.service.spec.ts scenarios.controller.spec.ts workflow-question.controller.spec.ts
       - name: Check portal request lifecycle
         run: pnpm --filter @plataforma/api exec jest --config ../../tests/jest.portal.config.cjs --runInBand
       - name: Build API
