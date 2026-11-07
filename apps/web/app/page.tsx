@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RequestScope } from "../lib/request-scope";
+import { PortalShell } from "../components/portal-shell";
 
 type CompanyMembership = {
   id: string;
@@ -80,6 +81,19 @@ const statusLabel: Record<WorkflowStatus, string> = {
   FAILED: "Falhou",
   CANCELLED: "Cancelada",
 };
+
+function workflowLabel(key: string) {
+  return key === "operations.prepare_from_contract" ? "Preparação de operação" : key;
+}
+
+function stepLabel(key: string) {
+  const labels: Record<string, string> = {
+    read_contract: "Consultar contrato",
+    plan_operations: "Planejar operação",
+    check_capacity: "Verificar capacidade",
+  };
+  return labels[key] ?? key;
+}
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -398,9 +412,8 @@ export default function Home() {
     return (
       <main className="login-shell">
         <section className="login-panel">
-          <div className="brand-mark">IA</div>
-          <p className="eyebrow">ADR Solutions</p>
-          <h1>Plataforma IA</h1>
+          <p className="eyebrow">Plataforma IA</p>
+          <h1>Entrar</h1>
           
           <form onSubmit={login}>
             <label>
@@ -435,11 +448,11 @@ export default function Home() {
   }
 
   return (
-    <main className="app-shell">
+    <PortalShell>
       <header className="topbar">
         <div>
-          <p className="eyebrow">Plataforma IA</p>
-          <h1>Visão operacional</h1>
+          <p className="eyebrow">Empresa ativa</p>
+          <h1>{activeCompanies.find((membership) => membership.company.id === companyId)?.company.name ?? "Sem empresa ativa"}</h1>
         </div>
         <div className="topbar-actions">
           {activeCompanies.length > 1 ? (
@@ -454,14 +467,14 @@ export default function Home() {
             <span className="company-name">{activeCompanies[0]?.company.name ?? "Sem empresa ativa"}</span>
           )}
           <span className="user-name">{user.name}</span>
-          <button className="secondary" type="button" disabled={loading} onClick={() => void logout()}>Sair</button>
+          <button className="secondary logout" type="button" disabled={loading} onClick={() => void logout()}>Sair</button>
         </div>
       </header>
 
-      <section className="toolbar">
+      <section className="toolbar" id="execucoes" tabIndex={-1}>
         <div>
-          <p className="section-kicker">Histórico persistido</p>
-          <h2>Workflows</h2>
+          <p className="section-kicker">Visão operacional</p>
+          <h2>Execuções</h2>
         </div>
         <div className="toolbar-actions">
           <select value={status} disabled={loading || !companyId} onChange={(event: ChangeEvent<HTMLSelectElement>) => void changeStatus(event.target.value as WorkflowStatus | "")} aria-label="Filtrar por status">
@@ -487,18 +500,19 @@ export default function Home() {
           ) : workflows.length === 0 ? (
             <div className="empty-state">
               <strong>Nenhuma execução registrada</strong>
-              <span>Quando um workflow for executado, ele aparecerá aqui.</span>
+              <span>As execuções registradas para esta empresa aparecerão aqui.</span>
             </div>
           ) : workflows.map((run) => (
             <button
               type="button"
               className={`run-row ${selected?.id === run.id ? "selected" : ""}`}
               key={run.id}
+              data-workflow-key={run.workflowKey}
               onClick={() => void loadDetail(run.id)}
             >
               <div className="run-main">
                 <span className={`status status-${run.status.toLowerCase()}`}>{statusLabel[run.status]}</span>
-                <strong>{run.workflowKey}</strong>
+                <strong>{workflowLabel(run.workflowKey)}</strong>
                 <span className="muted">Operação {run.operationId}</span>
               </div>
               <div className="run-meta">
@@ -522,7 +536,7 @@ export default function Home() {
               <div className="detail-heading">
                 <div>
                   <p className="section-kicker">Execução</p>
-                  <h2>{selected.workflowKey}</h2>
+                  <h2>{workflowLabel(selected.workflowKey)}</h2>
                 </div>
                 <span className={`status status-${selected.status.toLowerCase()}`}>{statusLabel[selected.status]}</span>
               </div>
@@ -576,7 +590,7 @@ export default function Home() {
                     <div className="step-order">{step.stepOrder}</div>
                     <div className="step-body">
                       <div className="step-title">
-                        <strong>{step.stepKey}</strong>
+                        <strong>{stepLabel(step.stepKey)}</strong>
                         <span className={`status status-${step.status.toLowerCase()}`}>{statusLabel[step.status]}</span>
                       </div>
                       <div className="step-time">
@@ -592,6 +606,6 @@ export default function Home() {
           )}
         </aside>
       </div>
-    </main>
+    </PortalShell>
   );
 }
