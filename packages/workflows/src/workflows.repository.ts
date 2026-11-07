@@ -126,6 +126,15 @@ export class WorkflowsRepository {
         companyId,
       },
       select: {
+        execution: {
+          select: {
+            state: true, attemptCount: true, maxAttempts: true, workflowVersion: true,
+            requestedByUserId: true, simulated: true, heartbeatAt: true, leaseUntil: true,
+            checkpoints: { select: { workflowStepId: true, state: true, replaySafety: true, attemptCount: true } },
+            incidents: { orderBy: { createdAt: "desc" }, take: 20,
+              select: { id: true, workflowStepId: true, attemptNumber: true, code: true, createdAt: true, resolvedAt: true } },
+          },
+        },
         id: true,
         workflowKey: true,
         status: true,

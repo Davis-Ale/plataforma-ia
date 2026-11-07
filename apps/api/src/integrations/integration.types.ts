@@ -1,4 +1,5 @@
 export type IntegrationKind = "contracts" | "operations" | "people";
+export type IntegrationReplaySafety = "MANUAL" | "READ_ONLY" | "PURE";
 
 export type IntegrationBinding = Readonly<{
   companyId: string;
@@ -22,6 +23,7 @@ export type ContractsReadOutput = Readonly<{
 }>;
 
 export type ContractsPort = Readonly<{
+  replaySafety?: IntegrationReplaySafety;
   key: string;
   kind: "contracts";
   read: (companyId: string, input: ContractsReadInput) => Promise<ContractsReadOutput>;
@@ -45,6 +47,7 @@ export type OperationsPlanOutput = Readonly<{
 }>;
 
 export type OperationsPort = Readonly<{
+  replaySafety?: IntegrationReplaySafety;
   key: string;
   kind: "operations";
   plan: (companyId: string, input: OperationsPlanInput) => Promise<OperationsPlanOutput>;
@@ -66,6 +69,7 @@ export type PeopleCapacityOutput = Readonly<{
 }>;
 
 export type PeoplePort = Readonly<{
+  replaySafety?: IntegrationReplaySafety;
   key: string;
   kind: "people";
   checkCapacity: (companyId: string, input: PeopleCapacityInput) => Promise<PeopleCapacityOutput>;

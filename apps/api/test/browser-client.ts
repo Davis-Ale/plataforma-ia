@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 export class BrowserClient {
   private socket: WebSocket | undefined;
   private nextId = 0;
+  private responses: Array<{ url: string; status: number }> = [];
   private pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
 
   async start(url: string) {
@@ -18,7 +19,12 @@ export class BrowserClient {
       socket.addEventListener("error", () => reject(new Error("Browser connection failed")), { once: true });
     });
     socket.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message: string } };
+      const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message: string };
+        method?: string; params?: { response?: { url: string; status: number } } };
+      if (message.method === "Network.responseReceived" && message.params?.response?.url.includes("/api/workflows")) {
+        const { url, status } = message.params.response;
+        this.responses = [...this.responses.slice(-9), { url, status }];
+      }
       if (message.id === undefined) return;
       const pending = this.pending.get(message.id);
       if (!pending) return;
@@ -64,10 +70,16 @@ export class BrowserClient {
       await delay(50);
     }
     const text = await this.evaluate<string>("document.body?.innerText");
-    throw new Error(`Browser condition timed out: ${expression}\n${text}`);
+    throw new Error(`Browser condition timed out: ${expression}\n${text}\nWorkflow responses: ${JSON.stringify(this.responses)}`);
   }
 
   async close() {
     this.socket?.close();
+  }
+
+  async capturePage() {
+    const { cssContentSize } = await this.send<{ cssContentSize: { width: number; height: number } }>("Page.getLayoutMetrics");
+    return this.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width: cssContentSize.width, height: cssContentSize.height, scale: 1 } });
   }
 }

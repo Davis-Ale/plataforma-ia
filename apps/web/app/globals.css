@@ -135,6 +135,7 @@ button:focus-visible {
 }
 
 form button,
+.primary,
 .secondary {
   border: 0;
   border-radius: 10px;
@@ -142,12 +143,13 @@ form button,
   font-weight: 700;
 }
 
-form button {
+form button,
+.primary {
   background: var(--accent);
   color: white;
 }
 
-form button:disabled {
+button:disabled {
   cursor: wait;
   opacity: .65;
 }
@@ -239,6 +241,12 @@ form button:disabled {
   font-size: 14px;
 }
 
+.notice {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: #e7d6b4;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(390px, .95fr);
@@ -297,6 +305,11 @@ form button:disabled {
   overflow-wrap: anywhere;
 }
 
+.run-main .muted {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .run-meta {
   flex-shrink: 0;
   color: var(--muted);
@@ -349,6 +362,15 @@ form button:disabled {
   justify-content: space-between;
   gap: 14px;
   margin-bottom: 22px;
+}
+
+.detail-heading > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.detail-heading h2 {
+  overflow-wrap: anywhere;
 }
 
 .facts {

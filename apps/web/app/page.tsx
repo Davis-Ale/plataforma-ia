@@ -50,6 +50,17 @@ type WorkflowStep = {
 
 type WorkflowDetail = Omit<WorkflowListItem, "_count"> & {
   steps: WorkflowStep[];
+  execution?: {
+    state: "READY" | "RUNNING" | "WAITING" | "FAILED" | "COMPLETED";
+    requestedByUserId: string;
+    attemptCount: number;
+    maxAttempts: number;
+    simulated: boolean;
+    heartbeatAt: string | null;
+    leaseUntil: string | null;
+    checkpoints: { workflowStepId: string; state: string; replaySafety: string; attemptCount: number }[];
+    incidents: { id: string; code: string; attemptNumber: number; createdAt: string; resolvedAt: string | null }[];
+  } | null;
 };
 
 type WorkflowListResponse = {
@@ -78,6 +89,23 @@ function formatDate(value: string | null) {
     dateStyle: "short",
     timeStyle: "medium",
   }).format(new Date(value));
+}
+
+function recoveryMessage(code: string) {
+  const messages: Record<string, string> = {
+    EXECUTION_FAILED: "A etapa falhou; o efeito da tentativa precisa ser verificado.",
+    EXECUTION_INTERRUPTED: "A execução perdeu o sinal de atividade.",
+    EXECUTION_IN_PROGRESS: "Já existe uma tentativa em andamento.",
+    RECONCILIATION_REQUIRED: "Resultado externo desconhecido. Confira o efeito antes de retomar.",
+    APPROVAL_REQUIRED: "A execução aguarda aprovação humana.",
+    ATTEMPT_LIMIT: "O limite de tentativas foi atingido.",
+    DENIED: "A autorização atual não permite esta execução.",
+    CHECKPOINT_ACCESS_DENIED: "O acesso atual não permite reutilizar uma etapa concluída.",
+    INTEGRATION_UNAVAILABLE: "A integração está indisponível ou sua configuração mudou.",
+    INVALID_INPUT: "Os dados da etapa não são válidos.",
+    CANCELLED: "A execução está cancelada.",
+  };
+  return messages[code] ?? "A execução requer revisão.";
 }
 
 function duration(startedAt: string | null, completedAt: string | null) {
@@ -111,6 +139,8 @@ export default function Home() {
   const sessionRequests = useRef(new RequestScope());
   const workflowRequests = useRef(new RequestScope());
   const detailRequests = useRef(new RequestScope());
+  const actionRequests = useRef(new RequestScope());
+  const [actionLoading, setActionLoading] = useState(false);
 
   const activeCompanies = useMemo(
     () => user?.companies.filter(
@@ -123,6 +153,8 @@ export default function Home() {
     sessionRequests.current.cancel();
     workflowRequests.current.cancel();
     detailRequests.current.cancel();
+    actionRequests.current.cancel();
+    setActionLoading(false);
     setUser(null);
     setCompanyId("");
     setWorkflows([]);
@@ -134,6 +166,8 @@ export default function Home() {
   }, []);
 
   const loadWorkflows = useCallback(async (currentCompanyId: string, currentStatus = "") => {
+    actionRequests.current.cancel();
+    setActionLoading(false);
     const pending = workflowRequests.current.start();
     detailRequests.current.cancel();
     setWorkflows([]);
@@ -174,6 +208,8 @@ export default function Home() {
   }, [resetSession]);
 
   const loadDetail = useCallback(async (id: string, currentCompanyId = companyId) => {
+    actionRequests.current.cancel();
+    setActionLoading(false);
     const pending = detailRequests.current.start();
     setSelected(null);
     if (!currentCompanyId) {
@@ -241,6 +277,7 @@ export default function Home() {
       sessions.cancel();
       workflows.cancel();
       details.cancel();
+      actionRequests.current.cancel();
     };
   }, [loadWorkflows]);
 
@@ -280,6 +317,8 @@ export default function Home() {
   }
 
   async function logout() {
+    actionRequests.current.cancel();
+    setActionLoading(false);
     const pending = sessionRequests.current.start();
     workflowRequests.current.cancel();
     detailRequests.current.cancel();
@@ -316,6 +355,39 @@ export default function Home() {
     setStatus(nextStatus);
     setSelected(null);
     await loadWorkflows(companyId, nextStatus);
+  }
+
+  async function executionAction(action: "inspect" | "resume") {
+    if (!selected || actionLoading) return;
+    const pending = actionRequests.current.start();
+    const runId = selected.id;
+    const currentCompanyId = companyId;
+    setActionLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/workflows/${encodeURIComponent(runId)}/${action}?companyId=${encodeURIComponent(currentCompanyId)}`, {
+        method: "POST", signal: pending.signal,
+      });
+      if (!pending.isCurrent()) return;
+      if (response.status === 401) { resetSession(); return; }
+      const data = await response.json() as { success?: boolean; error?: string };
+      if (!pending.isCurrent()) return;
+      if (!response.ok) { setMessage("Não foi possível processar a execução. Atualize os detalhes e confira seu acesso."); return; }
+      const detail = await fetch(`/api/workflows/${encodeURIComponent(runId)}?companyId=${encodeURIComponent(currentCompanyId)}`, { cache: "no-store", signal: pending.signal });
+      if (!pending.isCurrent()) return;
+      if (detail.status === 401) { resetSession(); return; }
+      if (!detail.ok) { setMessage("A ação foi processada. Atualize para consultar o resultado persistido."); return; }
+      const updated = await detail.json() as WorkflowDetail;
+      if (!pending.isCurrent()) return;
+      setSelected(updated);
+      setWorkflows((items) => items.map((item) => item.id === updated.id ? { ...item, status: updated.status, error: updated.error, completedAt: updated.completedAt } : item)
+        .filter((item) => !status || item.status === status));
+      if (data.success === false) setMessage(recoveryMessage(data.error ?? ""));
+    } catch {
+      if (pending.isCurrent()) setMessage("A conexão foi interrompida. Atualize antes de tentar novamente.");
+    } finally {
+      if (pending.isCurrent()) setActionLoading(false);
+    }
   }
 
   if (loading && !user) {
@@ -388,7 +460,7 @@ export default function Home() {
 
       <section className="toolbar">
         <div>
-          <p className="section-kicker">Execução real</p>
+          <p className="section-kicker">Histórico persistido</p>
           <h2>Workflows</h2>
         </div>
         <div className="toolbar-actions">
@@ -415,7 +487,7 @@ export default function Home() {
           ) : workflows.length === 0 ? (
             <div className="empty-state">
               <strong>Nenhuma execução registrada</strong>
-              <span>Quando um workflow real for executado, ele aparecerá aqui.</span>
+              <span>Quando um workflow for executado, ele aparecerá aqui.</span>
             </div>
           ) : workflows.map((run) => (
             <button
@@ -464,6 +536,35 @@ export default function Home() {
               </dl>
 
               {selected.error ? <div className="error-block">{selected.error}</div> : null}
+
+              {selected.execution ? (
+                <section aria-label="Integridade da execução">
+                  <p className="section-kicker">Integridade da execução</p>
+                  {selected.execution.simulated ? <p className="alert notice">Demonstração com adaptador simulado. Não comprova integração com sistema externo.</p> : null}
+                  <dl className="facts">
+                    <div><dt>Tentativas</dt><dd>{selected.execution.attemptCount} de {selected.execution.maxAttempts}</dd></div>
+                    <div><dt>Último sinal de atividade</dt><dd>{formatDate(selected.execution.heartbeatAt)}</dd></div>
+                    <div><dt>Validade da execução ativa</dt><dd>{formatDate(selected.execution.leaseUntil)}</dd></div>
+                  </dl>
+                  {selected.execution.checkpoints.some((item) => item.state === "UNKNOWN" && item.replaySafety === "MANUAL") ? (
+                    <p className="error-block">Resultado externo desconhecido. A retomada está bloqueada até a conferência do efeito no sistema de origem.</p>
+                  ) : null}
+                  {selected.execution.requestedByUserId === user.id && selected.status !== "CANCELLED" && selected.execution.state !== "COMPLETED" ? (
+                    <div className="toolbar-actions">
+                      <button className="secondary" type="button" disabled={actionLoading} onClick={() => void executionAction("inspect")}>Verificar interrupção</button>
+                      {selected.execution.state !== "RUNNING" && selected.execution.attemptCount < selected.execution.maxAttempts &&
+                        !selected.execution.checkpoints.some((item) => item.state === "UNKNOWN" && item.replaySafety === "MANUAL") ? (
+                        <button className="primary" type="button" disabled={actionLoading} onClick={() => void executionAction("resume")}>{actionLoading ? "Processando…" : "Retomar execução"}</button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {selected.execution.incidents.map((incident) => (
+                    <p key={incident.id} className={incident.resolvedAt ? "muted" : "error-block"}>
+                      Tentativa {incident.attemptNumber}: {recoveryMessage(incident.code)} · {formatDate(incident.createdAt)}{incident.resolvedAt ? " · Resolvido" : ""}
+                    </p>
+                  ))}
+                </section>
+              ) : null}
 
               <div className="steps-heading">
                 <p className="section-kicker">Etapas persistidas</p>

@@ -7,6 +7,7 @@ export function createDemoOperationsAdapter(): OperationsPort {
   return Object.freeze({
     key: DEMO_OPERATIONS_ADAPTER_KEY,
     kind: "operations" as const,
+    replaySafety: "PURE" as const,
     async plan(companyId: string, input: OperationsPlanInput): Promise<OperationsPlanOutput> {
       if (typeof companyId !== "string" || companyId.trim() === "") {
         throw new Error("Invalid companyId");

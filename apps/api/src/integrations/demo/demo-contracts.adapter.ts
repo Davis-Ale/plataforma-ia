@@ -23,6 +23,7 @@ export function createDemoContractsAdapter(): ContractsPort {
   return Object.freeze({
     key: DEMO_CONTRACTS_ADAPTER_KEY,
     kind: "contracts" as const,
+    replaySafety: "READ_ONLY" as const,
     async read(companyId: string, input: ContractsReadInput): Promise<ContractsReadOutput> {
       if (typeof companyId !== "string" || companyId.trim() === "") {
         throw new Error("Invalid companyId");

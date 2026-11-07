@@ -12,9 +12,6 @@ jest.mock("../capabilities/capabilities.module", () => {
 });
 
 import { CapabilityRegistry } from "../capabilities/capability-registry.service";
-import { AuthorizationGateway } from "../capabilities/authorization-gateway.service";
-import { PrepareOperationService } from "../scenarios/prepare-operation.service";
-import { WorkflowsService } from "../workflows/workflows.service";
 import { CONTRACTS_READ_KEY } from "./contracts-read.capability";
 import { DEMO_CONTRACTS_ADAPTER_KEY } from "./demo/demo-contracts.adapter";
 import { DEMO_OPERATIONS_ADAPTER_KEY } from "./demo/demo-operations.adapter";
@@ -231,113 +228,26 @@ describe("Integration resolution and generic capabilities", () => {
     expect(nestedRegistry.getContracts(DEMO_CONTRACTS_ADAPTER_KEY)?.key).toBe(DEMO_CONTRACTS_ADAPTER_KEY);
   });
 
-  it("unauthorized context does not create WorkflowRun or WorkflowStep", async () => {
-    const createRun = jest.fn();
-    const createStep = jest.fn();
-    const startRun = jest.fn();
-    const startStep = jest.fn();
-    const completeStep = jest.fn();
-    const failStep = jest.fn();
-    const completeRun = jest.fn();
-    const failRun = jest.fn();
-
-    const authorization = {
-      execute: jest.fn().mockResolvedValue({ success: false, error: "DENIED" }),
-    };
-
-    const moduleRef = await Test.createTestingModule({
-      providers: [
-        PrepareOperationService,
-        {
-          provide: WorkflowsService,
-          useValue: {
-            createRun,
-            createStep,
-            startRun,
-            startStep,
-            completeStep,
-            failStep,
-            completeRun,
-            failRun,
-          },
-        },
-        {
-          provide: AuthorizationGateway,
-          useValue: authorization,
-        },
-      ],
-    }).compile();
-
-    const service = moduleRef.get(PrepareOperationService);
-    const result = await service.run(
-      { companyId: "company-a", userId: "u1", sessionId: "s1" },
-      { contractExternalRef: "ATLAS", operationId: "op-atlas" },
-    );
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error).toBe("DENIED");
-    }
-    expect(authorization.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ companyId: "company-a" }),
-      expect.objectContaining({ capability: CONTRACTS_READ_KEY }),
-    );
-    expect(createRun).not.toHaveBeenCalled();
-    expect(createStep).not.toHaveBeenCalled();
-    expect(startRun).not.toHaveBeenCalled();
-  });
-
-  it("invalid input does not create WorkflowRun or WorkflowStep", async () => {
-    const createRun = jest.fn();
-    const createStep = jest.fn();
-    const startRun = jest.fn();
-    const authorization = {
-      execute: jest.fn(),
-    };
-
-    const moduleRef = await Test.createTestingModule({
-      providers: [
-        PrepareOperationService,
-        {
-          provide: WorkflowsService,
-          useValue: {
-            createRun,
-            createStep,
-            startRun,
-            startStep: jest.fn(),
-            completeStep: jest.fn(),
-            failStep: jest.fn(),
-            completeRun: jest.fn(),
-            failRun: jest.fn(),
-          },
-        },
-        {
-          provide: AuthorizationGateway,
-          useValue: authorization,
-        },
-      ],
-    }).compile();
-
-    const service = moduleRef.get(PrepareOperationService);
-    const result = await service.run(
-      { companyId: "company-a", userId: "u1", sessionId: "s1" },
-      { contractExternalRef: "", operationId: "op-atlas" },
-    );
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error).toBe("INVALID_INPUT");
-    }
-    expect(authorization.execute).not.toHaveBeenCalled();
-    expect(createRun).not.toHaveBeenCalled();
-    expect(createStep).not.toHaveBeenCalled();
-    expect(startRun).not.toHaveBeenCalled();
-  });
-
   it("rejects silent rebind of existing kind", async () => {
     await bootstrap.enableDemoIntegrationsForCompany("company-a");
     await expect(bootstrap.enableDemoIntegrationsForCompany("company-a")).rejects.toThrow(
       /Integration binding already exists/,
     );
+  });
+
+  it("pins the approved adapter within one request without changing concurrent tenant bindings", async () => {
+    await bootstrap.enableDemoIntegrationsForCompany("company-a");
+    const original = (await resolver.resolveContracts("company-a"))!;
+    const replacement = { ...original, key: "replacement-contracts" };
+    registry.registerContracts(replacement);
+    await resolver.replaceBinding({ companyId: "company-a", kind: "contracts", adapterKey: replacement.key });
+    const pinned = resolver.withAdapter("company-a", original, async () => {
+      await Promise.resolve();
+      expect((await resolver.resolveContracts("company-a"))?.key).toBe(original.key);
+      expect(await resolver.resolveContracts("company-b")).toBeUndefined();
+    });
+    expect((await resolver.resolveContracts("company-a"))?.key).toBe(replacement.key);
+    await pinned;
+    expect((await resolver.resolveContracts("company-a"))?.key).toBe(replacement.key);
   });
 });

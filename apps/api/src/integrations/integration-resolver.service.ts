@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   INTEGRATION_BINDING_STORE,
   IntegrationBindingStore,
@@ -16,6 +17,11 @@ const KINDS: readonly IntegrationKind[] = ["contracts", "operations", "people"];
 
 @Injectable()
 export class IntegrationResolver {
+  private readonly snapshot = new AsyncLocalStorage<{ companyId: string; adapter: ContractsPort | OperationsPort | PeoplePort }>();
+
+  withAdapter<T>(companyId: string, adapter: ContractsPort | OperationsPort | PeoplePort, action: () => Promise<T>): Promise<T> {
+    return this.snapshot.run({ companyId, adapter }, action);
+  }
   constructor(
     private readonly registry: IntegrationRegistry,
     @Inject(INTEGRATION_BINDING_STORE)
@@ -48,6 +54,8 @@ export class IntegrationResolver {
   }
 
   async resolveContracts(companyId: string): Promise<ContractsPort | undefined> {
+    const pinned = this.snapshot.getStore();
+    if (pinned?.companyId === companyId && pinned.adapter.kind === "contracts") return pinned.adapter;
     if (typeof companyId !== "string" || companyId.trim() === "") return undefined;
     const adapterKey = await this.store.get(companyId, "contracts");
     if (!adapterKey) return undefined;
@@ -55,6 +63,8 @@ export class IntegrationResolver {
   }
 
   async resolveOperations(companyId: string): Promise<OperationsPort | undefined> {
+    const pinned = this.snapshot.getStore();
+    if (pinned?.companyId === companyId && pinned.adapter.kind === "operations") return pinned.adapter;
     if (typeof companyId !== "string" || companyId.trim() === "") return undefined;
     const adapterKey = await this.store.get(companyId, "operations");
     if (!adapterKey) return undefined;
@@ -62,6 +72,8 @@ export class IntegrationResolver {
   }
 
   async resolvePeople(companyId: string): Promise<PeoplePort | undefined> {
+    const pinned = this.snapshot.getStore();
+    if (pinned?.companyId === companyId && pinned.adapter.kind === "people") return pinned.adapter;
     if (typeof companyId !== "string" || companyId.trim() === "") return undefined;
     const adapterKey = await this.store.get(companyId, "people");
     if (!adapterKey) return undefined;

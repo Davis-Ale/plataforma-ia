@@ -29,6 +29,7 @@ describe("Workflow execution visibility", () => {
 
   const detail = {
     ...listItem,
+    execution: null,
     steps: [
       {
         id: "step-a",
@@ -95,7 +96,7 @@ describe("Workflow execution visibility", () => {
   });
 
   it("returns a tenant-scoped workflow with ordered persisted steps", async () => {
-    repository.findRunWithSteps.mockResolvedValue(detail);
+    repository.findRunWithSteps.mockResolvedValue({ ...detail, execution: null });
 
     await expect(
       service.findOne(companyId, workflowRunId),

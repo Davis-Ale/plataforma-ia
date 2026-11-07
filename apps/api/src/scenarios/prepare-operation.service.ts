@@ -1,325 +1,159 @@
 import { Injectable } from "@nestjs/common";
-import { WorkflowRun, WorkflowStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { AuthorizationGateway } from "../capabilities/authorization-gateway.service";
-import { CapabilityContext } from "../capabilities/capability.types";
+import { CapabilityContext, CapabilityRequest, CapabilityResult } from "../capabilities/capability.types";
 import { CONTRACTS_READ_KEY } from "../integrations/contracts-read.capability";
 import { OPERATIONS_PLAN_KEY } from "../integrations/operations-plan.capability";
 import { PEOPLE_CAPACITY_CHECK_KEY } from "../integrations/people-capacity.capability";
-import { WorkflowsService } from "../workflows/workflows.service";
+import { IntegrationResolver } from "../integrations/integration-resolver.service";
+import { ContractsReadOutput, OperationsPlanOutput } from "../integrations/integration.types";
+import { ExecutionIntegrityService } from "./execution-integrity.service";
 
 export const PREPARE_OPERATION_WORKFLOW_KEY = "operations.prepare_from_contract";
+export const PREPARE_OPERATION_VERSION = "1";
+const plan = [
+  { stepKey: "read_contract", capabilityKey: CONTRACTS_READ_KEY, integrationKind: "contracts" },
+  { stepKey: "plan_operations", capabilityKey: OPERATIONS_PLAN_KEY, integrationKind: "operations" },
+  { stepKey: "check_capacity", capabilityKey: PEOPLE_CAPACITY_CHECK_KEY, integrationKind: "people" },
+] as const;
 
-export type PrepareOperationInput = Readonly<{
-  contractExternalRef: string;
-  operationId: string;
+export type PrepareOperationInput = Readonly<{ contractExternalRef: string; operationId: string }>;
+type CompletedStep = Readonly<{
+  stepKey: string; capabilityKey: string; integrationKind: "contracts" | "operations" | "people";
+  companyId: string; status: "COMPLETED"; output: unknown;
 }>;
-
 export type PrepareOperationResult =
-  | Readonly<{
-      success: true;
-      companyId: string;
-      workflowRunId: string;
-      workflowKey: string;
-      steps: readonly Readonly<{
-        stepKey: string;
-        capabilityKey: string;
-        integrationKind: "contracts" | "operations" | "people";
-        companyId: string;
-        status: "COMPLETED";
-        output: unknown;
-      }>[];
-      output: Readonly<{
-        contract: unknown;
-        plan: unknown;
-        capacity: unknown;
-      }>;
-    }>
-  | Readonly<{
-      success: false;
-      companyId: string;
-      workflowRunId?: string;
-      error: "DENIED" | "INVALID_INPUT" | "EXECUTION_FAILED" | "EXECUTION_IN_PROGRESS" | "APPROVAL_REQUIRED";
-      approvalId?: string;
-      failedStep?: string;
-      failedCapabilityKey?: string;
-    }>;
+  | Readonly<{ success: true; companyId: string; workflowRunId: string; workflowKey: string;
+      steps: readonly CompletedStep[]; output: Readonly<{ contract: unknown; plan: unknown; capacity: unknown }> }>
+  | Readonly<{ success: false; companyId: string; workflowRunId?: string; error: string;
+      approvalId?: string; failedStep?: string; failedCapabilityKey?: string }>;
 
 @Injectable()
 export class PrepareOperationService {
   constructor(
-    private readonly workflows: WorkflowsService,
+    private readonly integrity: ExecutionIntegrityService,
     private readonly authorization: AuthorizationGateway,
+    private readonly integrations: IntegrationResolver,
   ) {}
 
   async run(context: CapabilityContext, input: PrepareOperationInput): Promise<PrepareOperationResult> {
-    if (
-      !context ||
-      typeof context.companyId !== "string" ||
-      context.companyId.trim() === "" ||
-      typeof context.userId !== "string" ||
-      typeof context.sessionId !== "string"
-    ) {
+    if (!context || ![context.companyId, context.userId, context.sessionId].every((item) => typeof item === "string" && item.trim())) {
       return { success: false, companyId: context?.companyId ?? "", error: "DENIED" };
     }
-    if (
-      !input ||
-      typeof input.contractExternalRef !== "string" ||
-      input.contractExternalRef.trim() === "" ||
-      typeof input.operationId !== "string" ||
-      input.operationId.trim() === ""
-    ) {
+    if (!input || ![input.contractExternalRef, input.operationId].every((item) => typeof item === "string" && item.trim())) {
       return { success: false, companyId: context.companyId, error: "INVALID_INPUT" };
     }
-
-    const companyId = context.companyId;
-    const contractRef = input.contractExternalRef.trim();
-
-    const contractResult = await this.authorization.execute(context, {
-      capability: CONTRACTS_READ_KEY,
-      input: { externalRef: contractRef },
-    });
-
-    if (!contractResult.success) {
-      if (contractResult.error === "APPROVAL_REQUIRED") {
-        return {
-          success: false,
-          companyId,
-          error: "APPROVAL_REQUIRED",
-          approvalId: contractResult.approvalId,
-          failedStep: "read_contract",
-          failedCapabilityKey: CONTRACTS_READ_KEY,
-        };
-      }
-      return {
-        success: false,
-        companyId,
-        error: contractResult.error,
-        failedStep: "read_contract",
-        failedCapabilityKey: CONTRACTS_READ_KEY,
-      };
-    }
-
-    const contractOutput = contractResult.output;
-
-    const { run, created } = await this.workflows.createRun(
-      companyId,
-      PREPARE_OPERATION_WORKFLOW_KEY,
-      {
-        contractExternalRef: contractRef,
-        scenario: "new_contract",
-        areas: ["contracts", "operations", "people"],
-      },
-      {
-        operationId: input.operationId.trim(),
-        correlationId: context.correlationId,
-      },
-    );
-
-    if (!created) {
-      return this.fromExistingRun(companyId, run);
-    }
-
-    const stepDefs = [
-      {
-        stepKey: "read_contract",
-        capabilityKey: CONTRACTS_READ_KEY,
-        integrationKind: "contracts" as const,
-        order: 1,
-      },
-      {
-        stepKey: "plan_operations",
-        capabilityKey: OPERATIONS_PLAN_KEY,
-        integrationKind: "operations" as const,
-        order: 2,
-      },
-      {
-        stepKey: "check_capacity",
-        capabilityKey: PEOPLE_CAPACITY_CHECK_KEY,
-        integrationKind: "people" as const,
-        order: 3,
-      },
-    ] as const;
-
-    const createdSteps = [];
-    for (const def of stepDefs) {
-      createdSteps.push(
-        await this.workflows.createStep(companyId, run.id, {
-          stepKey: def.stepKey,
-          stepOrder: def.order,
-          input: {
-            companyId,
-            capabilityKey: def.capabilityKey,
-            integrationKind: def.integrationKind,
-          },
-        }),
-      );
-    }
-
-    await this.workflows.startRun(companyId, run.id);
-
-    const completed: Array<{
-      stepKey: string;
-      capabilityKey: string;
-      integrationKind: "contracts" | "operations" | "people";
-      companyId: string;
-      status: "COMPLETED";
-      output: unknown;
-    }> = [];
-
-    await this.workflows.startStep(companyId, run.id, createdSteps[0].id);
-    await this.workflows.completeStep(companyId, run.id, createdSteps[0].id, contractOutput as never);
-    completed.push({
-      stepKey: stepDefs[0].stepKey,
-      capabilityKey: stepDefs[0].capabilityKey,
-      integrationKind: stepDefs[0].integrationKind,
-      companyId,
-      status: "COMPLETED",
-      output: contractOutput,
-    });
-
-    let planOutput: unknown;
-    let capacityOutput: unknown;
-
-    for (let index = 1; index < stepDefs.length; index++) {
-      const def = stepDefs[index];
-      const step = createdSteps[index];
-      await this.workflows.startStep(companyId, run.id, step.id);
-
-      let capabilityInput: unknown;
-      if (def.capabilityKey === OPERATIONS_PLAN_KEY) {
-        const contract = contractOutput as {
-          externalRef: string;
-          name: string;
-          clientName: string;
-          startDate: string;
-        };
-        capabilityInput = {
-          contractExternalRef: contract.externalRef,
-          contractName: contract.name,
-          clientName: contract.clientName,
-          startDate: contract.startDate,
-        };
-      } else {
-        const plan = planOutput as {
-          planId: string;
-          workstreams: string[];
-          targetStartDate: string;
-        };
-        capabilityInput = {
-          planId: plan.planId,
-          workstreams: plan.workstreams,
-          targetStartDate: plan.targetStartDate,
-        };
-      }
-
-      const result = await this.authorization.execute(context, {
-        capability: def.capabilityKey,
-        input: capabilityInput,
-      });
-
-      if (!result.success) {
-        await this.workflows.failStep(companyId, run.id, step.id, result.error);
-        await this.workflows.failRun(companyId, run.id, result.error);
-        if (result.error === "APPROVAL_REQUIRED") {
-          return {
-            success: false,
-            companyId,
-            workflowRunId: run.id,
-            error: "APPROVAL_REQUIRED",
-            approvalId: result.approvalId,
-            failedStep: def.stepKey,
-            failedCapabilityKey: def.capabilityKey,
-          };
-        }
-        return {
-          success: false,
-          companyId,
-          workflowRunId: run.id,
-          error: result.error,
-          failedStep: def.stepKey,
-          failedCapabilityKey: def.capabilityKey,
-        };
-      }
-
-      await this.workflows.completeStep(companyId, run.id, step.id, result.output as never);
-      completed.push({
-        stepKey: def.stepKey,
-        capabilityKey: def.capabilityKey,
-        integrationKind: def.integrationKind,
-        companyId,
-        status: "COMPLETED",
-        output: result.output,
-      });
-
-      if (def.capabilityKey === OPERATIONS_PLAN_KEY) planOutput = result.output;
-      if (def.capabilityKey === PEOPLE_CAPACITY_CHECK_KEY) capacityOutput = result.output;
-    }
-
-    const output = Object.freeze({
-      contract: contractOutput,
-      plan: planOutput,
-      capacity: capacityOutput,
-    });
-    await this.workflows.completeRun(companyId, run.id, output as never);
-
-    return {
-      success: true,
-      companyId,
-      workflowRunId: run.id,
-      workflowKey: PREPARE_OPERATION_WORKFLOW_KEY,
-      steps: Object.freeze(completed),
-      output,
-    };
+    const run = await this.integrity.open(context, PREPARE_OPERATION_WORKFLOW_KEY, {
+      contractExternalRef: input.contractExternalRef.trim(), scenario: "new_contract", areas: ["contracts", "operations", "people"],
+    }, input.operationId.trim(), PREPARE_OPERATION_VERSION, plan);
+    return this.resume(context, run.id);
   }
 
-  private fromExistingRun(
-    companyId: string,
-    run: WorkflowRun,
-  ): PrepareOperationResult {
-    if (run.status === WorkflowStatus.COMPLETED) {
-      const output = run.output;
-      if (
-        output === null ||
-        typeof output !== "object" ||
-        Array.isArray(output)
-      ) {
-        return {
-          success: false,
-          companyId,
-          workflowRunId: run.id,
-          error: "EXECUTION_FAILED",
-        };
+  async resume(context: CapabilityContext, runId: string): Promise<PrepareOperationResult> {
+    const claim = await this.integrity.claim(context, runId, PREPARE_OPERATION_VERSION);
+    const { execution, token } = claim;
+    const failure = (error: string): Extract<PrepareOperationResult, { success: false }> => ({ success: false, companyId: context.companyId, workflowRunId: runId, error });
+    if (!token && claim.blocked) return failure(claim.blocked);
+    if (!token && execution.state !== "COMPLETED") return failure(claim.blocked ?? "EXECUTION_IN_PROGRESS");
+    if (execution.run.workflowKey !== PREPARE_OPERATION_WORKFLOW_KEY || execution.checkpoints.length !== plan.length) {
+      if (token) await this.integrity.halt(context, runId, token, null, "EXECUTION_FAILED");
+      return failure("EXECUTION_FAILED");
+    }
+    const runInput = execution.run.input as { contractExternalRef: string };
+    const completed: CompletedStep[] = [];
+    const outputs: unknown[] = [];
+    const requests: CapabilityRequest[] = [];
+    let leaseLost = false;
+    let heartbeatPending = false;
+    const timer = token ? setInterval(() => {
+      if (heartbeatPending || leaseLost) return;
+      heartbeatPending = true;
+      void this.integrity.heartbeat(context, runId, token).catch(() => { leaseLost = true; }).finally(() => { heartbeatPending = false; });
+    }, Math.floor(execution.leaseMs / 3)) : undefined;
+    timer?.unref();
+    try {
+      for (const [index, definition] of plan.entries()) {
+        if (leaseLost) return failure("EXECUTION_INTERRUPTED");
+        const checkpoint = execution.checkpoints[index];
+        if (checkpoint.capabilityKey !== definition.capabilityKey || checkpoint.step.stepKey !== definition.stepKey || checkpoint.integrationKind !== definition.integrationKind) {
+          if (token) await this.integrity.halt(context, runId, token, null, "EXECUTION_FAILED");
+          return failure("EXECUTION_FAILED");
+        }
+        const contract = outputs[0] as ContractsReadOutput;
+        const operation = outputs[1] as OperationsPlanOutput;
+        const input = index === 0 ? { externalRef: runInput.contractExternalRef }
+          : index === 1 ? { contractExternalRef: contract.externalRef, contractName: contract.name, clientName: contract.clientName, startDate: contract.startDate }
+          : { planId: operation.planId, workstreams: operation.workstreams, targetStartDate: operation.targetStartDate };
+        const request = { capability: definition.capabilityKey, input,
+          ...(checkpoint.state === "APPROVAL_REQUIRED" && checkpoint.approvalId ? { approvalId: checkpoint.approvalId } : {}) };
+        requests.push(request);
+        let output: unknown;
+        if (checkpoint.state === "COMPLETED") {
+          if (!await this.authorization.canAccessCheckpoint(context, request)) {
+            if (token) await this.integrity.halt(context, runId, token, null, "CHECKPOINT_ACCESS_DENIED");
+            return failure("DENIED");
+          }
+          output = checkpoint.step.output;
+        } else {
+          if (!token) return failure("EXECUTION_FAILED");
+          const adapter = definition.integrationKind === "contracts" ? await this.integrations.resolveContracts(context.companyId)
+            : definition.integrationKind === "operations" ? await this.integrations.resolveOperations(context.companyId)
+            : await this.integrations.resolvePeople(context.companyId);
+          if (!adapter || (checkpoint.adapterKey && checkpoint.adapterKey !== adapter.key)) {
+            await this.integrity.halt(context, runId, token, checkpoint.workflowStepId, "INTEGRATION_UNAVAILABLE");
+            return failure("INTEGRATION_UNAVAILABLE");
+          }
+          await this.integrity.dispatch(context, runId, token, checkpoint.workflowStepId, adapter.key, adapter.replaySafety ?? "MANUAL");
+          let result: CapabilityResult;
+          try {
+            result = await this.integrations.withAdapter(context.companyId, adapter, () => this.authorization.execute(context, request));
+          } catch {
+            result = { success: false, error: "EXECUTION_FAILED" };
+          }
+          if (!result.success) {
+            await this.integrity.halt(context, runId, token, checkpoint.workflowStepId, result.error,
+              result.error === "APPROVAL_REQUIRED" ? result.approvalId : undefined);
+            return { ...failure(result.error), ...(result.error === "APPROVAL_REQUIRED" ? { approvalId: result.approvalId } : {}),
+              failedStep: definition.stepKey, failedCapabilityKey: definition.capabilityKey };
+          }
+          output = result.output;
+          if (!this.validOutput(index, output, context.companyId, adapter.key)) {
+            await this.integrity.halt(context, runId, token, checkpoint.workflowStepId, "EXECUTION_FAILED");
+            return failure("EXECUTION_FAILED");
+          }
+          await this.integrity.checkpoint(context, runId, token, checkpoint.workflowStepId, output as Prisma.InputJsonValue);
+        }
+        if (!this.validOutput(index, output, context.companyId, checkpoint.adapterKey ?? (output as { sourceAdapter?: string })?.sourceAdapter)) {
+          if (token) await this.integrity.halt(context, runId, token, null, "EXECUTION_FAILED");
+          return failure("EXECUTION_FAILED");
+        }
+        outputs.push(output);
+        completed.push({ ...definition, companyId: context.companyId, status: "COMPLETED", output });
       }
-      const record = output as Record<string, unknown>;
-      return {
-        success: true,
-        companyId,
-        workflowRunId: run.id,
-        workflowKey: PREPARE_OPERATION_WORKFLOW_KEY,
-        steps: Object.freeze([]),
-        output: Object.freeze({
-          contract: record.contract,
-          plan: record.plan,
-          capacity: record.capacity,
-        }),
-      };
+      const output = { contract: outputs[0], plan: outputs[1], capacity: outputs[2] };
+      if (leaseLost) return failure("EXECUTION_INTERRUPTED");
+      for (const request of requests) {
+        if (!await this.authorization.canAccessCheckpoint(context, request)) {
+          if (token) await this.integrity.halt(context, runId, token, null, "CHECKPOINT_ACCESS_DENIED");
+          return failure("DENIED");
+        }
+      }
+      if (token) await this.integrity.finish(context, runId, token, output as Prisma.InputJsonValue);
+      return { success: true, companyId: context.companyId, workflowRunId: runId, workflowKey: PREPARE_OPERATION_WORKFLOW_KEY, steps: completed, output };
+    } finally {
+      if (timer) clearInterval(timer);
     }
-    if (
-      run.status === WorkflowStatus.PENDING ||
-      run.status === WorkflowStatus.RUNNING
-    ) {
-      return {
-        success: false,
-        companyId,
-        workflowRunId: run.id,
-        error: "EXECUTION_IN_PROGRESS",
-      };
-    }
-    return {
-      success: false,
-      companyId,
-      workflowRunId: run.id,
-      error: "EXECUTION_FAILED",
-    };
+  }
+
+  private validOutput(index: number, output: unknown, companyId: string, adapterKey?: string): boolean {
+    if (!output || typeof output !== "object" || Array.isArray(output)) return false;
+    const record = output as Record<string, unknown>;
+    if (record.companyId !== companyId || typeof record.simulated !== "boolean" || !adapterKey || record.sourceAdapter !== adapterKey) return false;
+    const keys = index === 0 ? ["externalRef", "name", "clientName", "startDate", "status"]
+      : index === 1 ? ["planId", "contractExternalRef", "targetStartDate"] : ["planId"];
+    if (!keys.every((key) => typeof record[key] === "string")) return false;
+    if (index === 1 && (!Array.isArray(record.workstreams) || !record.workstreams.every((value) => typeof value === "string"))) return false;
+    if (index === 2 && (typeof record.available !== "boolean" || !Array.isArray(record.gaps) || !record.gaps.every((value) => typeof value === "string"))) return false;
+    try { return Buffer.byteLength(JSON.stringify(output), "utf8") <= 65536; } catch { return false; }
   }
 }

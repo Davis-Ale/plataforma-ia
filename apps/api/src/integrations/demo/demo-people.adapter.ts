@@ -6,6 +6,7 @@ export function createDemoPeopleAdapter(): PeoplePort {
   return Object.freeze({
     key: DEMO_PEOPLE_ADAPTER_KEY,
     kind: "people" as const,
+    replaySafety: "READ_ONLY" as const,
     async checkCapacity(companyId: string, input: PeopleCapacityInput): Promise<PeopleCapacityOutput> {
       if (typeof companyId !== "string" || companyId.trim() === "") {
         throw new Error("Invalid companyId");

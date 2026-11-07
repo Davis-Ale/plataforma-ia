@@ -13,6 +13,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import request from "supertest";
 import { AuthModule } from "../src/auth/auth.module";
 import { WorkflowsModule } from "../src/workflows/workflows.module";
+import { ScenariosModule } from "../src/scenarios/scenarios.module";
+import { PrepareOperationService } from "../src/scenarios/prepare-operation.service";
+import { IntegrationBootstrapService } from "../src/integrations/integration-bootstrap.service";
+import { IntegrationRegistry } from "../src/integrations/integration-registry.service";
+import { IntegrationResolver } from "../src/integrations/integration-resolver.service";
+import { createDemoOperationsAdapter } from "../src/integrations/demo/demo-operations.adapter";
 import { BrowserClient } from "./browser-client";
 
 describe("Portal authentication with PostgreSQL and Chrome", () => {
@@ -44,7 +50,7 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     }
     if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) throw new Error("Provider credentials must be absent");
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), AuthModule, WorkflowsModule],
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), AuthModule, WorkflowsModule, ScenariosModule],
     }).compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix("api/v1");
@@ -64,6 +70,18 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
       } });
       runIds.set(companyId, run.id);
     }
+    const managedId = runIds.get(companyA)!;
+    const managedStep = await prisma.workflowStep.findFirstOrThrow({ where: { workflowRunId: managedId } });
+    await prisma.workflowRun.update({ where: { id: managedId }, data: { status: "FAILED", error: "EXECUTION_INTERRUPTED" } });
+    await prisma.workflowExecution.create({ data: {
+      workflowRunId: managedId, companyId: companyA, requestedByUserId: userId, workflowVersion: "qa", simulated: true,
+      state: "FAILED", attemptCount: 1, maxAttempts: 3, leaseMs: 60000,
+    } });
+    await prisma.workflowCheckpoint.create({ data: {
+      workflowStepId: managedStep.id, workflowRunId: managedId, companyId: companyA,
+      capabilityKey: "qa.action", integrationKind: "contracts", state: "UNKNOWN", replaySafety: "MANUAL", attemptCount: 1,
+    } });
+    await prisma.workflowIncident.create({ data: { workflowRunId: managedId, companyId: companyA, attemptNumber: 1, code: "EXECUTION_INTERRUPTED" } });
   });
 
   afterAll(async () => {
@@ -152,6 +170,7 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     }
     if (!ready) throw new Error(`Portal unavailable: ${portalLog}`);
     await browser.start(portalUrl);
+    await browser.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
     await browser.waitFor('!!document.querySelector("input[type=email]")');
     const submitLogin = async () => {
       await browser.evaluate(`(() => {
@@ -178,6 +197,19 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     const cookies = await browser.send<{ cookies: Array<{ name: string; httpOnly: boolean }> }>("Network.getCookies", { urls: [portalUrl] });
     expect(cookies.cookies.filter((cookie) => cookie.name.startsWith("plataforma_")).map((cookie) => cookie.httpOnly)).toEqual([true, true]);
     expect(await browser.evaluate<string>("document.cookie")).not.toContain("plataforma_");
+
+    await clickRun("portal.qa.1");
+    await browser.waitFor(`!!document.querySelector('section[aria-label="Integridade da execução"]')`);
+    expect(await browser.evaluate<boolean>(has("Demonstração com adaptador simulado"))).toBe(true);
+    expect(await browser.evaluate<boolean>(has("Resultado externo desconhecido"))).toBe(true);
+    expect(await browser.evaluate<boolean>('Array.from(document.querySelectorAll("button")).some(button => button.textContent === "Retomar execução")')).toBe(false);
+    await browser.evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Verificar interrupção").click()');
+    await browser.waitFor('!Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Verificar interrupção").disabled');
+    if (process.env.PORTAL_QA_ARTIFACT_DIR) {
+      await mkdir(process.env.PORTAL_QA_ARTIFACT_DIR, { recursive: true });
+      const screenshot = await browser.capturePage();
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-execution-integrity.png"), Buffer.from(screenshot.data, "base64"));
+    }
 
     delayDetail = true;
     await clickRun("portal.qa.1");
@@ -218,5 +250,44 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await browser.waitFor('!!document.querySelector("input[type=email]")');
     expect(await browser.evaluate<boolean>(has("portal.qa.1"))).toBe(false);
     expect(await browser.evaluate<boolean>(has("portal.qa.2"))).toBe(false);
+  });
+
+  it("resumes a persisted failed scenario through the portal without repeating its completed read", async () => {
+    const sessionId = randomUUID();
+    await prisma!.authSession.create({ data: { id: sessionId, userId, refreshTokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
+    await app!.get(IntegrationBootstrapService).enableDemoIntegrationsForCompany(companyA);
+    const demo = createDemoOperationsAdapter();
+    let attempts = 0;
+    app!.get(IntegrationRegistry).registerOperations({ ...demo, key: "qa-portal-recovery", plan: async (company, input) => {
+      if (++attempts === 1) throw new Error("isolated recovery fixture");
+      return { ...await demo.plan(company, input), sourceAdapter: "qa-portal-recovery" };
+    } });
+    await app!.get(IntegrationResolver).replaceBinding({ companyId: companyA, kind: "operations", adapterKey: "qa-portal-recovery" });
+    const failed = await app!.get(PrepareOperationService).run({ companyId: companyA, userId, sessionId }, { contractExternalRef: "ATLAS", operationId: randomUUID() });
+    expect(failed).toMatchObject({ success: false, error: "EXECUTION_FAILED" });
+    const completedRead = await prisma!.workflowCheckpoint.findFirstOrThrow({ where: { workflowRunId: failed.workflowRunId, capabilityKey: "contracts.read" } });
+    expect(completedRead).toMatchObject({ state: "COMPLETED", attemptCount: 1 });
+    expect(await browser.evaluate(`fetch("/api/session/login", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(${JSON.stringify({ email, password })})}).then(response=>response.ok)`)).toBe(true);
+    await browser.send("Page.reload");
+    await browser.waitFor('!!document.querySelector("select[aria-label=Empresa]")');
+    await browser.evaluate(`(() => { const select=document.querySelector("select[aria-label=Empresa]"); select.value=${JSON.stringify(companyA)}; select.dispatchEvent(new Event("change",{bubbles:true})); })()`);
+    await browser.waitFor('!!Array.from(document.querySelectorAll("button.run-row")).find(button=>button.innerText.includes("operations.prepare_from_contract"))');
+    await browser.evaluate('Array.from(document.querySelectorAll("button.run-row")).find(button=>button.innerText.includes("operations.prepare_from_contract")).click()');
+    await browser.waitFor('!!Array.from(document.querySelectorAll("button")).find(button=>button.textContent==="Retomar execução")');
+    await browser.evaluate('Array.from(document.querySelectorAll("button")).find(button=>button.textContent==="Retomar execução").click()');
+    await browser.waitFor('!!document.querySelector(".detail-heading .status-completed")');
+    expect(attempts).toBe(2);
+    expect(await prisma!.workflowCheckpoint.findUnique({ where: { workflowStepId: completedRead.workflowStepId } })).toMatchObject({ state: "COMPLETED", attemptCount: 1 });
+    expect(await browser.evaluate<boolean>('document.body.innerText.includes("Demonstração com adaptador simulado")')).toBe(true);
+    expect(await browser.evaluate<boolean>('document.body.innerText.includes("Resolvido")')).toBe(true);
+    if (process.env.PORTAL_QA_ARTIFACT_DIR) {
+      const screenshot = await browser.capturePage();
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-recovered-execution.png"), Buffer.from(screenshot.data, "base64"));
+      await browser.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+      await browser.waitFor('window.innerWidth === 390');
+      expect(await browser.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+      const mobile = await browser.capturePage();
+      await writeFile(join(process.env.PORTAL_QA_ARTIFACT_DIR, "portal-recovered-mobile.png"), Buffer.from(mobile.data, "base64"));
+    }
   });
 });

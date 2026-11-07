@@ -1,176 +1,76 @@
-import { ConflictException } from "@nestjs/common";
-import { WorkflowStatus } from "@prisma/client";
 import { AuthorizationGateway } from "../capabilities/authorization-gateway.service";
-import { WorkflowsService } from "../workflows/workflows.service";
-import {
-  PREPARE_OPERATION_WORKFLOW_KEY,
-  PrepareOperationService,
-} from "./prepare-operation.service";
+import { IntegrationResolver } from "../integrations/integration-resolver.service";
+import { ExecutionIntegrityService } from "./execution-integrity.service";
+import { PrepareOperationService } from "./prepare-operation.service";
 
-describe("PrepareOperationService identity", () => {
-  const companyId = "company-a";
-  const context = {
-    companyId,
-    userId: "user-a",
-    sessionId: "session-a",
-    correlationId: "corr-prepare",
-  };
-  const input = {
-    contractExternalRef: "ATLAS",
-    operationId: "op-atlas",
-  };
-  const workflowInput = {
-    contractExternalRef: "ATLAS",
-    scenario: "new_contract",
-    areas: ["contracts", "operations", "people"],
-  };
+describe("PrepareOperationService recovery", () => {
+  const context = { companyId: "company-a", userId: "user-a", sessionId: "session-a" };
+  const contract = { companyId: context.companyId, externalRef: "ATLAS", name: "Atlas", clientName: "Client", startDate: "2026-11-05", status: "ACTIVE", simulated: true, sourceAdapter: "contracts" };
+  const operation = { companyId: context.companyId, planId: "plan", contractExternalRef: "ATLAS", workstreams: ["Delivery"], targetStartDate: "2026-11-05", simulated: true, sourceAdapter: "operations" };
+  const capacity = { companyId: context.companyId, planId: "plan", available: true, gaps: [], simulated: true, sourceAdapter: "people" };
+  const definitions = [["read_contract", "contracts.read", "contracts"], ["plan_operations", "operations.plan", "operations"], ["check_capacity", "people.capacity.check", "people"]];
 
-  function buildService(overrides?: {
-    createRun?: jest.Mock;
-    execute?: jest.Mock;
-  }) {
-    const createRun = overrides?.createRun ?? jest.fn();
-    const createStep = jest.fn();
-    const startRun = jest.fn();
-    const workflows = {
-      createRun,
-      createStep,
-      startRun,
-      startStep: jest.fn(),
-      completeStep: jest.fn(),
-      failStep: jest.fn(),
-      completeRun: jest.fn(),
-      failRun: jest.fn(),
-    } as unknown as WorkflowsService;
-    const authorization = {
-      execute:
-        overrides?.execute ??
-        jest.fn().mockResolvedValue({
-          success: true,
-          output: { externalRef: "ATLAS" },
-        }),
-    } as unknown as AuthorizationGateway;
-    return {
-      service: new PrepareOperationService(workflows, authorization),
-      createRun,
-      createStep,
-      startRun,
-    };
+  function setup(completed = 0) {
+    const execution = { state: "RUNNING", leaseMs: 60000, run: { workflowKey: "operations.prepare_from_contract", input: { contractExternalRef: "ATLAS" } },
+      checkpoints: definitions.map(([stepKey, capabilityKey, integrationKind], index) => ({ workflowStepId: String(index), capabilityKey, integrationKind,
+        state: index < completed ? "COMPLETED" : "READY", adapterKey: index < completed ? integrationKind : null,
+        step: { stepKey, output: [contract, operation, capacity][index] as unknown } })) };
+    const integrity = { open: jest.fn().mockResolvedValue({ id: "run" }), claim: jest.fn().mockResolvedValue({ execution, token: "lease" }),
+      dispatch: jest.fn(), checkpoint: jest.fn(), halt: jest.fn(), finish: jest.fn(), heartbeat: jest.fn() };
+    const authorization = { canAccessCheckpoint: jest.fn().mockResolvedValue(true), execute: jest.fn().mockImplementation(async (_ctx, request) => ({ success: true,
+      output: request.capability === "contracts.read" ? contract : request.capability === "operations.plan" ? operation : capacity })) };
+    const integrations = { resolveContracts: jest.fn().mockResolvedValue({ key: "contracts", kind: "contracts", replaySafety: "READ_ONLY" }),
+      resolveOperations: jest.fn().mockResolvedValue({ key: "operations", kind: "operations", replaySafety: "PURE" }),
+      resolvePeople: jest.fn().mockResolvedValue({ key: "people", kind: "people", replaySafety: "READ_ONLY" }),
+      withAdapter: jest.fn().mockImplementation((_company, _adapter, action) => action()) };
+    return { execution, integrity, authorization, integrations,
+      service: new PrepareOperationService(integrity as unknown as ExecutionIntegrityService, authorization as unknown as AuthorizationGateway, integrations as unknown as IntegrationResolver) };
   }
 
-  it("rejects a missing operationId before creating a run", async () => {
-    const { service, createRun } = buildService();
-    const result = await service.run(context, {
-      contractExternalRef: "ATLAS",
-      operationId: "",
-    });
-    expect(result).toEqual({
-      success: false,
-      companyId,
-      error: "INVALID_INPUT",
-    });
-    expect(createRun).not.toHaveBeenCalled();
+  it("persists identity before the first dispatch and rejects empty operation identity", async () => {
+    const { service, integrity, authorization } = setup();
+    expect(await service.run(context, { contractExternalRef: "ATLAS", operationId: "" })).toMatchObject({ error: "INVALID_INPUT" });
+    expect(integrity.open).not.toHaveBeenCalled();
+    expect((await service.run(context, { contractExternalRef: "ATLAS", operationId: "op" })).success).toBe(true);
+    expect(integrity.open.mock.invocationCallOrder[0]).toBeLessThan(authorization.execute.mock.invocationCallOrder[0]);
+    expect(integrity.finish).toHaveBeenCalledTimes(1);
   });
 
-  it("creates the workflow run with caller operationId and persisted correlationId", async () => {
-    const createRun = jest.fn().mockResolvedValue({
-      created: true,
-      run: {
-        id: "run-new",
-        companyId,
-        status: WorkflowStatus.PENDING,
-        correlationId: "corr-prepare",
-      },
-    });
-    const { service, createStep } = buildService({ createRun });
-    createStep.mockRejectedValue(new Error("stop-after-create"));
-
-    await expect(service.run(context, input)).rejects.toThrow(
-      "stop-after-create",
-    );
-    expect(createRun).toHaveBeenCalledWith(
-      companyId,
-      PREPARE_OPERATION_WORKFLOW_KEY,
-      workflowInput,
-      {
-        operationId: "op-atlas",
-        correlationId: "corr-prepare",
-      },
-    );
+  it("reauthorizes a completed checkpoint without repeating its adapter call", async () => {
+    const { service, authorization, integrity } = setup(1);
+    expect((await service.resume(context, "run")).success).toBe(true);
+    expect(authorization.canAccessCheckpoint).toHaveBeenCalledWith(context, { capability: "contracts.read", input: { externalRef: "ATLAS" } });
+    expect(authorization.execute).toHaveBeenCalledTimes(2);
+    expect(integrity.checkpoint).toHaveBeenCalledTimes(2);
   });
 
-  it("returns the existing completed run without re-executing steps", async () => {
-    const existing = {
-      id: "run-existing",
-      companyId,
-      status: WorkflowStatus.COMPLETED,
-      output: {
-        contract: { externalRef: "ATLAS" },
-        plan: { planId: "plan-a" },
-        capacity: { available: true },
-      },
-    };
-    const { service, createRun, createStep, startRun } = buildService({
-      createRun: jest.fn().mockResolvedValue({
-        created: false,
-        run: existing,
-      }),
-    });
-
-    const result = await service.run(context, input);
-
-    expect(result).toEqual({
-      success: true,
-      companyId,
-      workflowRunId: "run-existing",
-      workflowKey: PREPARE_OPERATION_WORKFLOW_KEY,
-      steps: [],
-      output: existing.output,
-    });
-    expect(createRun).toHaveBeenCalledTimes(1);
-    expect(createStep).not.toHaveBeenCalled();
-    expect(startRun).not.toHaveBeenCalled();
+  it("blocks reuse after a domain authorization is revoked", async () => {
+    const { service, authorization, integrity } = setup(1);
+    authorization.canAccessCheckpoint.mockResolvedValue(false);
+    expect(await service.resume(context, "run")).toMatchObject({ success: false, error: "DENIED" });
+    expect(authorization.execute).not.toHaveBeenCalled();
+    expect(integrity.halt).toHaveBeenCalledWith(context, "run", "lease", null, "CHECKPOINT_ACCESS_DENIED");
   });
 
-  it.each([WorkflowStatus.PENDING, WorkflowStatus.RUNNING])(
-    "fails closed for an existing %s run without treating it as complete",
-    async (status) => {
-      const { service, createRun, createStep, startRun } = buildService({
-        createRun: jest.fn().mockResolvedValue({
-          created: false,
-          run: {
-            id: "run-active",
-            companyId,
-            status,
-            output: null,
-          },
-        }),
-      });
+  it("records an uncertain failure and never completes unfinished work", async () => {
+    const { service, authorization, integrity } = setup(1);
+    authorization.execute.mockRejectedValue(new Error("connection interrupted"));
+    expect(await service.resume(context, "run")).toMatchObject({ success: false, error: "EXECUTION_FAILED" });
+    expect(integrity.halt).toHaveBeenCalledWith(context, "run", "lease", "1", "EXECUTION_FAILED", undefined);
+    expect(integrity.finish).not.toHaveBeenCalled();
+  });
 
-      const result = await service.run(context, input);
+  it("rejects changed bindings before dispatch", async () => {
+    const { service, execution, integrity } = setup();
+    execution.checkpoints[0].adapterKey = "previous";
+    expect(await service.resume(context, "run")).toMatchObject({ error: "INTEGRATION_UNAVAILABLE" });
+    expect(integrity.dispatch).not.toHaveBeenCalled();
+  });
 
-      expect(result).toEqual({
-        success: false,
-        companyId,
-        workflowRunId: "run-active",
-        error: "EXECUTION_IN_PROGRESS",
-      });
-      expect(createRun).toHaveBeenCalledTimes(1);
-      expect(createStep).not.toHaveBeenCalled();
-      expect(startRun).not.toHaveBeenCalled();
-    },
-  );
-
-  it("propagates a fail-closed operation conflict", async () => {
-    const { service, createStep } = buildService({
-      createRun: jest
-        .fn()
-        .mockRejectedValue(new ConflictException("Workflow operation conflict")),
-    });
-
-    await expect(service.run(context, input)).rejects.toBeInstanceOf(
-      ConflictException,
-    );
-    expect(createStep).not.toHaveBeenCalled();
+  it("does not release checkpoints containing another company", async () => {
+    const { service, execution, integrity } = setup(1);
+    execution.checkpoints[0].step.output = { ...contract, companyId: "foreign" };
+    expect(await service.resume(context, "run")).toMatchObject({ success: false, error: "EXECUTION_FAILED" });
+    expect(integrity.finish).not.toHaveBeenCalled();
   });
 });
