@@ -168,8 +168,30 @@ model Company {
   workflowExecutions   WorkflowExecution[]
   workflowCheckpoints  WorkflowCheckpoint[]
   workflowIncidents    WorkflowIncident[]
+  integrationBindings  IntegrationBinding[]
 
   @@map("companies")
+}
+
+enum IntegrationBindingKind {
+  contracts
+  operations
+  people
+}
+
+model IntegrationBinding {
+  id         String @id @default(uuid())
+  companyId  String @map("company_id")
+  kind       IntegrationBindingKind
+  adapterKey String @map("adapter_key")
+  revision   Int @default(1)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, kind])
+  @@map("integration_bindings")
 }
 
 model User {
