@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useSta
 import { RequestScope } from "../lib/request-scope";
 import { PortalShell } from "../components/portal-shell";
 import { WorkflowApprovals } from "../components/workflow-approvals";
+import { OperationQuestion } from "../components/operation-question";
 
 type CompanyMembership = {
   id: string;
@@ -584,6 +585,9 @@ export default function Home() {
               </dl>
 
               {selected.error ? <div className="error-block">{selected.execution ? recoveryMessage(selected.error) : selected.error}</div> : null}
+
+              <OperationQuestion key={`${companyId}:${selected.id}`} companyId={companyId} runId={selected.id}
+                describeStatus={(answer) => executionStatus(answer).label} onSessionExpired={resetSession} />
 
               {selected.execution ? (
                 <section aria-label="Integridade da execução">
