@@ -639,6 +639,11 @@ model WorkflowCheckpoint {
   @@map("workflow_checkpoints")
 }
 
+enum WorkflowReconciliationOutcome {
+  APPLIED
+  NOT_APPLIED
+}
+
 model WorkflowIncident {
   id            String @id @default(uuid())
   companyId     String @map("company_id")
@@ -648,6 +653,8 @@ model WorkflowIncident {
   code          String
   createdAt     DateTime @default(now()) @map("created_at")
   resolvedAt    DateTime? @map("resolved_at")
+  reconciliationOutcome WorkflowReconciliationOutcome? @map("reconciliation_outcome")
+  reconciledAt DateTime? @map("reconciled_at")
 
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   execution WorkflowExecution @relation(fields: [workflowRunId, companyId], references: [workflowRunId, companyId], onDelete: Cascade)

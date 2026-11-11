@@ -62,7 +62,9 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     await prisma.company.createMany({ data: companies.map((id, index) => ({ id, name: `Portal QA ${index + 1}` })) });
     const passwords = moduleRef.get(PasswordService);
     await prisma.user.create({ data: { id: userId, name: "Portal QA", email, passwordHash: await passwords.hash(password) } });
-    await prisma.companyUser.createMany({ data: [companyA, companyB].map((companyId) => ({ companyId, userId, role: "MEMBER" })) });
+    await prisma.companyUser.createMany({ data: [
+      { companyId: companyA, userId, role: "ADMIN" }, { companyId: companyB, userId, role: "MEMBER" },
+    ] });
     for (const [index, companyId] of companies.entries()) {
       const run = await prisma.workflowRun.create({ data: {
         companyId, workflowKey: `portal.qa.${index + 1}`, operationId: randomUUID(), correlationId: randomUUID(),
@@ -80,9 +82,12 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     } });
     await prisma.workflowCheckpoint.create({ data: {
       workflowStepId: managedStep.id, workflowRunId: managedId, companyId: companyA,
-      capabilityKey: "qa.action", integrationKind: "contracts", state: "UNKNOWN", replaySafety: "MANUAL", attemptCount: 1,
+      capabilityKey: "qa.action", integrationKind: "contracts", adapterKey: "qa-adapter",
+      state: "UNKNOWN", replaySafety: "MANUAL", attemptCount: 1,
     } });
-    await prisma.workflowIncident.create({ data: { workflowRunId: managedId, companyId: companyA, attemptNumber: 1, code: "EXECUTION_INTERRUPTED" } });
+    await prisma.workflowIncident.create({ data: {
+      workflowRunId: managedId, companyId: companyA, workflowStepId: managedStep.id, attemptNumber: 1, code: "EXECUTION_INTERRUPTED",
+    } });
   });
 
   afterAll(async () => {
@@ -232,6 +237,15 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     expect(await browser.evaluate<boolean>('Array.from(document.querySelectorAll("button")).some(button => button.textContent === "Retomar execução")')).toBe(false);
     await browser.evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Verificar interrupção").click()');
     await browser.waitFor('!Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Verificar interrupção").disabled');
+    await browser.evaluate(`(() => {
+      const form = document.querySelector(".reconciliation-form");
+      form.elements.outcome.value = "APPLIED";
+      form.elements.evidenceReference.value = "QA-123";
+      form.requestSubmit();
+    })()`);
+    await browser.waitFor(has("A ação já ocorreu no sistema externo"));
+    expect(await browser.evaluate<boolean>('!!document.querySelector(".reconciliation-form")')).toBe(false);
+    expect(await browser.evaluate<boolean>(has("Retomar execução"))).toBe(false);
 
     delayDetail = true;
     await clickRun("portal.qa.1");

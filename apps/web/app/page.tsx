@@ -9,6 +9,7 @@ import { OperationQuestion } from "../components/operation-question";
 type CompanyMembership = {
   id: string;
   status: string;
+  role: string;
   company: {
     id: string;
     name: string;
@@ -62,7 +63,10 @@ type WorkflowDetail = Omit<WorkflowListItem, "_count"> & {
     heartbeatAt: string | null;
     leaseUntil: string | null;
     checkpoints: { workflowStepId: string; state: string; replaySafety: string; attemptCount: number }[];
-    incidents: { id: string; code: string; attemptNumber: number; createdAt: string; resolvedAt: string | null }[];
+    incidents: {
+      id: string; workflowStepId: string | null; code: string; attemptNumber: number; createdAt: string;
+      resolvedAt: string | null; reconciledAt: string | null; reconciliationOutcome: "APPLIED" | "NOT_APPLIED" | null;
+    }[];
   } | null;
 };
 
@@ -398,7 +402,9 @@ export default function Home() {
     await loadWorkflows(companyId, status, nextOperationId);
   }
 
-  async function executionAction(action: "inspect" | "resume") {
+  async function executionAction(action: "inspect" | "resume" | "reconcile", decision?: {
+    incidentId: string; outcome: FormDataEntryValue | null; evidenceReference: FormDataEntryValue | null;
+  }) {
     if (!selected || actionLoading) return;
     const pending = actionRequests.current.start();
     const runId = selected.id;
@@ -408,6 +414,7 @@ export default function Home() {
     try {
       const response = await fetch(`/api/workflows/${encodeURIComponent(runId)}/${action}?companyId=${encodeURIComponent(currentCompanyId)}`, {
         method: "POST", signal: pending.signal,
+        ...(decision ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(decision) } : {}),
       });
       if (!pending.isCurrent()) return;
       if (response.status === 401) { resetSession(); return; }
@@ -430,6 +437,14 @@ export default function Home() {
       if (pending.isCurrent()) setActionLoading(false);
     }
   }
+
+  const activeRole = activeCompanies.find((membership) => membership.company.id === companyId)?.role;
+  const canReconcile = activeRole === "OWNER" || activeRole === "ADMIN";
+  const execution = selected?.execution;
+  const uncertainSteps = execution?.checkpoints.filter((item) => item.state === "UNKNOWN" && item.replaySafety === "MANUAL") ?? [];
+  const pendingIncident = execution?.incidents.find((incident) =>
+    incident.attemptNumber === execution.attemptCount && !incident.resolvedAt && !incident.reconciledAt &&
+    uncertainSteps.some((step) => step.workflowStepId === incident.workflowStepId));
 
   if (loading && !user) {
     return <main className="center-state">Carregando plataforma…</main>;
@@ -598,14 +613,40 @@ export default function Home() {
                     <div><dt>Último sinal de atividade</dt><dd>{formatDate(selected.execution.heartbeatAt)}</dd></div>
                     <div><dt>Validade da execução ativa</dt><dd>{formatDate(selected.execution.leaseUntil)}</dd></div>
                   </dl>
-                  {selected.execution.checkpoints.some((item) => item.state === "UNKNOWN" && item.replaySafety === "MANUAL") ? (
-                    <p className="error-block">Resultado externo desconhecido. A retomada está bloqueada até a conferência do efeito no sistema de origem.</p>
+                  {uncertainSteps.length ? (
+                    <p className="error-block">{selected.execution.incidents.some((incident) =>
+                      incident.attemptNumber === selected.execution?.attemptCount && incident.reconciliationOutcome === "APPLIED")
+                      ? "A ação já ocorreu no sistema externo. A etapa permanece bloqueada para evitar duplicação."
+                      : "Resultado externo desconhecido. Confira o efeito no sistema de origem antes de retomar."}</p>
+                  ) : null}
+                  {canReconcile && pendingIncident && selected.execution.state === "FAILED" && selected.status === "FAILED" ? (
+                    <form key={pendingIncident.id} className="reconciliation-form" onSubmit={(event) => {
+                      event.preventDefault();
+                      const form = new FormData(event.currentTarget);
+                      void executionAction("reconcile", {
+                        incidentId: pendingIncident.id, outcome: form.get("outcome"), evidenceReference: form.get("evidenceReference"),
+                      });
+                    }}>
+                      <label>
+                        Resultado confirmado no sistema externo
+                        <select name="outcome" defaultValue="" required disabled={actionLoading}>
+                          <option value="" disabled>Selecione o resultado</option>
+                          <option value="APPLIED">A ação ocorreu</option>
+                          <option value="NOT_APPLIED">A ação não ocorreu e não está pendente</option>
+                        </select>
+                      </label>
+                      <label>
+                        Referência da conferência
+                        <input name="evidenceReference" required maxLength={80} pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,79}" disabled={actionLoading} />
+                      </label>
+                      <button className="secondary" type="submit" disabled={actionLoading}>Registrar conferência</button>
+                    </form>
                   ) : null}
                   {selected.execution.requestedByUserId === user.id && selected.status !== "CANCELLED" && selected.execution.state !== "COMPLETED" && selected.error !== "APPROVAL_REJECTED" ? (
                     <div className="toolbar-actions">
                       <button className="secondary" type="button" disabled={actionLoading} onClick={() => void executionAction("inspect")}>Verificar interrupção</button>
                       {selected.execution.state !== "RUNNING" && selected.execution.attemptCount < selected.execution.maxAttempts &&
-                        !selected.execution.checkpoints.some((item) => item.state === "UNKNOWN" && item.replaySafety === "MANUAL") ? (
+                        !uncertainSteps.length ? (
                         <button className="primary" type="button" disabled={actionLoading} onClick={() => void executionAction("resume")}>{actionLoading ? "Processando…" : "Retomar execução"}</button>
                       ) : null}
                     </div>
@@ -613,6 +654,7 @@ export default function Home() {
                   {selected.execution.incidents.map((incident) => (
                     <p key={incident.id} className={incident.resolvedAt ? "muted" : "error-block"}>
                       Tentativa {incident.attemptNumber}: {recoveryMessage(incident.code)} · {formatDate(incident.createdAt)}{incident.resolvedAt ? " · Resolvido" : ""}
+                      {incident.reconciledAt ? ` · Conferido em ${formatDate(incident.reconciledAt)}` : ""}
                     </p>
                   ))}
                 </section>
