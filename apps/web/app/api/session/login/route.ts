@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { backendFetch, setSessionCookies } from "../../../../lib/backend";
+import { isSameOriginAction } from "../../../../lib/same-origin";
 
 export async function POST(request: Request) {
+  if (!isSameOriginAction(request.headers)) return NextResponse.json({ message: "Invalid origin" }, { status: 403 });
   const body = await request.text();
   const response = await backendFetch("/auth/login", {
     method: "POST",
