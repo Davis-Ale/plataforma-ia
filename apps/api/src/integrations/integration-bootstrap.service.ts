@@ -8,6 +8,7 @@ import { IntegrationRegistry } from "./integration-registry.service";
 import { IntegrationResolver } from "./integration-resolver.service";
 import { createOperationsPlanCapability } from "./operations-plan.capability";
 import { createPeopleCapacityCheckCapability } from "./people-capacity.capability";
+import { createPncpContractsAdapter, PNCP_CONTRACTS_ADAPTER_KEY } from "./pncp-contracts.adapter";
 
 @Injectable()
 export class IntegrationBootstrapService implements OnModuleInit {
@@ -17,13 +18,25 @@ export class IntegrationBootstrapService implements OnModuleInit {
     private readonly capabilities: CapabilityRegistry,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     this.registry.registerContracts(createDemoContractsAdapter());
     this.registry.registerOperations(createDemoOperationsAdapter());
     this.registry.registerPeople(createDemoPeopleAdapter());
+    this.registry.registerContracts(createPncpContractsAdapter());
     this.capabilities.register(createContractsReadCapability(this.resolver));
     this.capabilities.register(createOperationsPlanCapability(this.resolver));
     this.capabilities.register(createPeopleCapacityCheckCapability(this.resolver));
+    const companyId = process.env.PNCP_CONTRACTS_COMPANY_ID?.trim();
+    if (companyId) await this.enablePncpContractsForCompany(companyId);
+  }
+
+  async enablePncpContractsForCompany(companyId: string): Promise<void> {
+    if ((await this.resolver.resolveContracts(companyId))?.key === PNCP_CONTRACTS_ADAPTER_KEY) return;
+    try {
+      await this.resolver.bind({ companyId, kind: "contracts", adapterKey: PNCP_CONTRACTS_ADAPTER_KEY });
+    } catch (error) {
+      if ((await this.resolver.resolveContracts(companyId))?.key !== PNCP_CONTRACTS_ADAPTER_KEY) throw error;
+    }
   }
 
   async enableDemoIntegrationsForCompany(companyId: string): Promise<void> {

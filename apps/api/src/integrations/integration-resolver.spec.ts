@@ -63,13 +63,13 @@ describe("Integration resolution and generic capabilities", () => {
   let capabilities: CapabilityRegistry;
   let bootstrap: IntegrationBootstrapService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     registry = new IntegrationRegistry();
     store = new InMemoryIntegrationBindingStore();
     resolver = new IntegrationResolver(registry, store);
     capabilities = new CapabilityRegistry();
     bootstrap = new IntegrationBootstrapService(registry, resolver, capabilities);
-    bootstrap.onModuleInit();
+    await bootstrap.onModuleInit();
   });
 
   it("registers generic capabilities without binding tenants", async () => {
@@ -77,6 +77,35 @@ describe("Integration resolution and generic capabilities", () => {
     expect(capabilities.resolve(OPERATIONS_PLAN_KEY)?.key).toBe(OPERATIONS_PLAN_KEY);
     expect(capabilities.resolve(PEOPLE_CAPACITY_CHECK_KEY)?.key).toBe(PEOPLE_CAPACITY_CHECK_KEY);
     expect(await resolver.resolveContracts("company-a")).toBeUndefined();
+  });
+
+  it("binds PNCP only to the selected company and never replaces another adapter", async () => {
+    await bootstrap.enableDemoIntegrationsForCompany("company-b");
+    await Promise.all([
+      bootstrap.enablePncpContractsForCompany("company-a"),
+      bootstrap.enablePncpContractsForCompany("company-a"),
+    ]);
+    expect((await resolver.resolveContracts("company-a"))?.key).toBe("pncp-contracts");
+    expect(await resolver.resolveOperations("company-a")).toBeUndefined();
+    expect(await resolver.resolveContracts("company-c")).toBeUndefined();
+    await expect(bootstrap.enablePncpContractsForCompany("company-b")).rejects.toThrow("already exists");
+    expect((await resolver.resolveContracts("company-b"))?.key).toBe("demo-contracts");
+  });
+
+  it("checks the PNCP reference before fetching and rejects mismatched responses", async () => {
+    await bootstrap.enablePncpContractsForCompany("company-a");
+    const adapter = (await resolver.resolveContracts("company-a"))!;
+    const request = jest.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json({ numeroControlePNCP: "00000000000000-2-000002/2025" }));
+    try {
+      await expect(adapter.read("company-a", { externalRef: "https://example.com" })).rejects.toThrow("reference");
+      expect(request).not.toHaveBeenCalled();
+      await expect(adapter.read("company-a", { externalRef: "00000000000000-2-000001/2025" })).rejects.toThrow("response");
+      expect(request).toHaveBeenCalledWith("https://pncp.gov.br/api/pncp/v1/orgaos/00000000000000/contratos/2025/1",
+        expect.objectContaining({ redirect: "error" }));
+    } finally {
+      request.mockRestore();
+    }
   });
 
   it("fails closed when tenant has no integration binding", async () => {
