@@ -196,6 +196,13 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
       await delay(100);
     }
     if (!ready) throw new Error(`Portal unavailable: ${portalLog}`);
+    for (const action of ["login", "logout"]) {
+      for (const headers of [undefined, { Origin: "https://foreign.example.com", "Sec-Fetch-Site": "cross-site" }]) {
+        const response = await fetch(`${portalUrl}/api/session/${action}`, { method: "POST", headers });
+        expect(response.status).toBe(403);
+        expect(response.headers.get("set-cookie")).toBeNull();
+      }
+    }
     await browser.start(portalUrl);
     await browser.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
     await browser.waitFor('!!document.querySelector("input[type=email]")');
