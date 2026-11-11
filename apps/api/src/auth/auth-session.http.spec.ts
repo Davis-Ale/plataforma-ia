@@ -15,6 +15,7 @@ import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { CompanyContextGuard } from "./guards/company-context.guard";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { LoginRateLimitService } from "./login-rate-limit.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { AuthenticatedUser } from "./types/authenticated-user";
 
@@ -106,6 +107,7 @@ describe("Authentication and company navigation HTTP", () => {
         AuthService, AuthTokenService, AuthSessionService, JwtStrategy, JwtAuthGuard, CompanyContextGuard,
         { provide: PasswordService, useValue: passwords },
         { provide: ConfigService, useValue: config },
+        { provide: LoginRateLimitService, useValue: { retryAfter: async () => 0 } },
         { provide: PrismaService, useValue: prisma },
         { provide: WorkflowsService, useValue: { findAll, findOne } },
       ],
