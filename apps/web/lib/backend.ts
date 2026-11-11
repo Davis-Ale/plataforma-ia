@@ -14,6 +14,7 @@ export function backendFetch(
   return fetch(`${baseUrl()}${path}`, {
     ...init,
     cache: "no-store",
+    redirect: "error",
   });
 }
 

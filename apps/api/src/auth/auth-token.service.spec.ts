@@ -1,6 +1,7 @@
 import { UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
+import { randomBytes } from "node:crypto";
 import { AuthTokenService } from "./auth-token.service";
 
 describe("AuthTokenService rotation", () => {
@@ -18,6 +19,30 @@ describe("AuthTokenService rotation", () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  it.each(["JWT_SECRET", "JWT_REFRESH_SECRET"])("rejects blank %s", (name) => {
+    expect(() => new AuthTokenService(jwt, new ConfigService({
+      JWT_SECRET: accessSecret, JWT_REFRESH_SECRET: refreshSecret, [name]: " ",
+    }))).toThrow(`${name} must be configured`);
+  });
+
+  it("rejects reuse of the access key as the refresh key", () => {
+    expect(() => new AuthTokenService(jwt, new ConfigService({
+      JWT_SECRET: accessSecret, JWT_REFRESH_SECRET: accessSecret,
+    }))).toThrow("must be different");
+  });
+
+  it("rejects short and example keys in production and accepts independent keys", () => {
+    jest.replaceProperty(process, "env", { ...process.env, NODE_ENV: "production" });
+    const config = {
+      JWT_SECRET: randomBytes(32).toString("hex"),
+      JWT_REFRESH_SECRET: randomBytes(32).toString("hex"),
+    };
+    for (const JWT_SECRET of [accessSecret, "sua-chave-secreta-aqui-trocar-em-producao"]) {
+      expect(() => new AuthTokenService(jwt, new ConfigService({ ...config, JWT_SECRET }))).toThrow("JWT_SECRET must use");
+    }
+    expect(() => new AuthTokenService(jwt, new ConfigService(config))).not.toThrow();
+  });
 
   it("issues different refresh tokens within the same second while preserving session identity", async () => {
     jest.spyOn(Date, "now").mockReturnValue(1_793_894_400_000);
