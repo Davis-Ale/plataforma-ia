@@ -61,6 +61,7 @@ describe("Portal backend session bridge", () => {
 
     expect((await authorizedBackendFetch("/auth/me")).status).toBe(200);
     expect(fetchMock.mock.calls[0]![0]).toEqual(expect.stringMatching(/\/auth\/refresh$/));
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ redirect: "error" });
     expect((fetchMock.mock.calls[1]![1].headers as Headers).get("Authorization")).toBe("Bearer access-b");
   });
 
@@ -78,5 +79,12 @@ describe("Portal backend session bridge", () => {
   it("does not dispatch a backend request without a session", async () => {
     expect((await authorizedBackendFetch("/workflows")).status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses redirects even when a caller requests that they be followed", async () => {
+    mockJar.set("plataforma_access", "access-a");
+    fetchMock.mockResolvedValueOnce(Response.json({ items: [] }));
+    await authorizedBackendFetch("/workflows", { redirect: "follow" });
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/workflows$/), expect.objectContaining({ redirect: "error" }));
   });
 });

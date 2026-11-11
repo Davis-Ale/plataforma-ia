@@ -6,6 +6,10 @@ import { JwtPayload } from "./types/jwt-payload";
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 const REFRESH_TOKEN_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7;
+const EXAMPLE_JWT_SECRETS = new Set([
+  "sua-chave-secreta-aqui-trocar-em-producao",
+  "sua-chave-refresh-aqui-trocar-em-producao",
+]);
 
 @Injectable()
 export class AuthTokenService {
@@ -16,8 +20,23 @@ export class AuthTokenService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {
-    this.accessTokenSecret = this.configService.getOrThrow<string>("JWT_SECRET");
-    this.refreshTokenSecret = this.configService.getOrThrow<string>("JWT_REFRESH_SECRET");
+    this.accessTokenSecret = this.readSecret("JWT_SECRET");
+    this.refreshTokenSecret = this.readSecret("JWT_REFRESH_SECRET");
+    if (this.accessTokenSecret.trim() === this.refreshTokenSecret.trim()) {
+      throw new Error("JWT_SECRET and JWT_REFRESH_SECRET must be different");
+    }
+  }
+
+  private readSecret(name: "JWT_SECRET" | "JWT_REFRESH_SECRET"): string {
+    const secret = this.configService.getOrThrow<string>(name);
+    if (typeof secret !== "string" || secret.trim() === "") {
+      throw new Error(`${name} must be configured`);
+    }
+    if (this.configService.get<string>("NODE_ENV") === "production" &&
+      (Buffer.byteLength(secret.trim(), "utf8") < 32 || EXAMPLE_JWT_SECRETS.has(secret.trim()))) {
+      throw new Error(`${name} must use a private key of at least 32 bytes in production`);
+    }
+    return secret;
   }
 
   async createTokenPair(
