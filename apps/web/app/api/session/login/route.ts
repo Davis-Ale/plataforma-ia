@@ -13,9 +13,10 @@ export async function POST(request: Request) {
   const data = await response.json().catch(() => null);
 
   if (!response.ok || data === null) {
+    const retryAfter = response.headers.get("retry-after");
     return NextResponse.json(
       data ?? { message: "Authentication failed" },
-      { status: response.status },
+      { status: response.status, headers: retryAfter ? { "Retry-After": retryAfter } : undefined },
     );
   }
 

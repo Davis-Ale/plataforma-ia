@@ -331,6 +331,14 @@ export default function Home() {
       });
       const data = await response.json() as { user?: User };
       if (!pending.isCurrent()) return;
+      if (response.status === 429) {
+        setMessage("Muitas tentativas de login. Aguarde um minuto e tente novamente.");
+        return;
+      }
+      if (response.status === 503) {
+        setMessage("Login temporariamente indisponível. Tente novamente em instantes.");
+        return;
+      }
       if (!response.ok || !data.user) {
         setMessage("E-mail ou senha inválidos.");
         return;

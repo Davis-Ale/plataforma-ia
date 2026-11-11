@@ -49,6 +49,9 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
       process.env.DATABASE_URL !== process.env.PORTAL_TEST_DATABASE_URL) {
       throw new Error("This suite requires an isolated local plataforma_portal_ci database in CI");
     }
+    if (process.env.REDIS_HOST !== "127.0.0.1" || process.env.REDIS_PORT !== "16379") {
+      throw new Error("This suite requires the isolated Redis service in CI");
+    }
     if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) throw new Error("Provider credentials must be absent");
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), AuthModule, WorkflowsModule, ScenariosModule],
@@ -110,6 +113,20 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     expect(response.status).toBe(201);
     return response.body as { accessToken: string; refreshToken: string };
   }
+
+  it("limits concurrent attempts for the same normalized login and supplies the retry window", async () => {
+    const attemptEmail = `rate-limit-${randomUUID()}@example.com`;
+    const attempt = (address: string) => request(app!.getHttpServer())
+      .post("/api/v1/auth/login").send({ email: address, password });
+    const responses = await Promise.all(Array.from({ length: 11 }, (_, index) =>
+      attempt(index % 2 === 0 ? attemptEmail : attemptEmail.toUpperCase())));
+    expect(responses.filter((response) => response.status === 401)).toHaveLength(10);
+    const blocked = responses.filter((response) => response.status === 429);
+    expect(blocked).toHaveLength(1);
+    expect(Number(blocked[0]!.headers["retry-after"])).toBeGreaterThan(0);
+    expect(Number(blocked[0]!.headers["retry-after"])).toBeLessThanOrEqual(60);
+    expect((await attempt(`other-${randomUUID()}@example.com`)).status).toBe(401);
+  });
 
   it("reads only persisted workflows belonging to the authenticated company", async () => {
     const tokens = await login();

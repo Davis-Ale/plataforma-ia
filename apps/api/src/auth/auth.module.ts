@@ -10,6 +10,7 @@ import { AuthService } from "./auth.service";
 import { CompanyContextGuard } from "./guards/company-context.guard";
 import { CompanyRolesGuard } from "./guards/company-roles.guard";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { LoginRateLimitService } from "./login-rate-limit.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 
 @Module({
@@ -26,6 +27,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
     AuthService,
     AuthTokenService,
     AuthSessionService,
+    LoginRateLimitService,
     JwtAuthGuard,
     CompanyContextGuard,
     CompanyRolesGuard,
