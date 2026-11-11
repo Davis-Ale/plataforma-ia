@@ -45,7 +45,7 @@ describe("Execution integrity with isolated PostgreSQL", () => {
     await prisma.company.createMany({ data: [{ id: companyId, name: "Integrity QA" }, { id: foreignId, name: "Foreign QA" }] });
     await prisma.user.create({ data: { id: userId, email: `integrity-${userId}@example.com`, name: "Integrity QA", passwordHash: "unused-test-only" } });
     await prisma.user.create({ data: { id: otherUserId, email: `integrity-${otherUserId}@example.com`, name: "Other QA", passwordHash: "unused-test-only" } });
-    await prisma.companyUser.create({ data: { companyId, userId: otherUserId, role: "MEMBER" } });
+    await prisma.companyUser.create({ data: { companyId, userId: otherUserId, role: "ADMIN" } });
     await prisma.authSession.create({ data: { id: otherSessionId, userId: otherUserId, refreshTokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
     await prisma.companyUser.createMany({ data: [companyId, foreignId].map((id) => ({ companyId: id, userId, role: "MEMBER" })) });
     await prisma.authSession.create({ data: { id: sessionId, userId, refreshTokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
@@ -151,6 +151,51 @@ describe("Execution integrity with isolated PostgreSQL", () => {
     expect(results.filter((item) => item.token === null)).toHaveLength(1);
     await expect(integrity.heartbeat(context, run.id, run.token)).rejects.toThrow("lease");
     await expect(integrity.finish(context, run.id, results.find((item) => item.token)!.token!, {})).rejects.toThrow("unfinished");
+  });
+
+  it("records one authorized reconciliation and permits a fresh attempt only after confirmed non-execution", async () => {
+    const run = await open();
+    await expire(run.id);
+    await integrity.inspect(context, run.id);
+    const incident = await prisma.workflowIncident.findFirstOrThrow({ where: { workflowRunId: run.id } });
+    const decision = { incidentId: incident.id, outcome: "NOT_APPLIED" as const, evidenceReference: "QA-123" };
+    const reviewer = { companyId, userId: otherUserId, sessionId: otherSessionId };
+    await expect(integrity.reconcile(context, run.id, decision)).rejects.toThrow("not authorized");
+    await expect(integrity.reconcile(reviewer, run.id, { ...decision, incidentId: randomUUID() })).rejects.toThrow("Incident");
+    await prisma.authSession.update({ where: { id: otherSessionId }, data: { revokedAt: new Date() } });
+    try { await expect(integrity.reconcile(reviewer, run.id, decision)).rejects.toThrow("not authorized"); }
+    finally { await prisma.authSession.update({ where: { id: otherSessionId }, data: { revokedAt: null } }); }
+    const submissions = await Promise.allSettled([
+      integrity.reconcile(reviewer, run.id, decision), integrity.reconcile(reviewer, run.id, decision),
+    ]);
+    expect(submissions.map((submission) => submission.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(await prisma.workflowIncident.findUnique({ where: { id: incident.id } })).toMatchObject({
+      reconciliationOutcome: "NOT_APPLIED", reconciledAt: expect.any(Date), resolvedAt: expect.any(Date),
+    });
+    expect(await prisma.workflowCheckpoint.findUnique({ where: { workflowStepId: run.stepId } })).toMatchObject({ state: "READY", approvalId: null });
+    expect(await prisma.auditLog.findMany({ where: {
+      companyId, resourceId: run.id, metadata: { path: ["event"], equals: "RECONCILED" },
+    } })).toEqual([expect.objectContaining({ userId: otherUserId, metadata: expect.objectContaining({
+      incidentId: incident.id, outcome: "NOT_APPLIED", evidenceReference: "QA-123",
+    }) })]);
+    const recovery = await integrity.claim(context, run.id, "1");
+    expect(recovery.token).toBeTruthy();
+    await expect(integrity.checkpoint(context, run.id, run.token, run.stepId, { value: "late" })).rejects.toThrow("lease");
+  });
+
+  it("records a confirmed external effect without replaying the step or fabricating its output", async () => {
+    const run = await open();
+    await expire(run.id);
+    await integrity.inspect(context, run.id);
+    const incident = await prisma.workflowIncident.findFirstOrThrow({ where: { workflowRunId: run.id } });
+    await integrity.reconcile({ companyId, userId: otherUserId, sessionId: otherSessionId }, run.id, {
+      incidentId: incident.id, outcome: "APPLIED", evidenceReference: "QA-456",
+    });
+    expect(await prisma.workflowIncident.findUnique({ where: { id: incident.id } })).toMatchObject({
+      reconciliationOutcome: "APPLIED", reconciledAt: expect.any(Date), resolvedAt: null,
+    });
+    expect(await integrity.claim(context, run.id, "1")).toMatchObject({ token: null, blocked: "RECONCILIATION_REQUIRED" });
+    expect(await prisma.workflowStep.findUnique({ where: { id: run.stepId } })).toMatchObject({ status: "FAILED", output: null });
   });
 
   it("enforces tenant isolation, current session and original requester before recovery", async () => {

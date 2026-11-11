@@ -4,6 +4,7 @@ import { PrismaService } from "@plataforma/database";
 import { hashWorkflowRequest } from "@plataforma/workflows";
 import { randomUUID } from "node:crypto";
 import { CapabilityContext } from "../capabilities/capability.types";
+import { ReconcileExecutionDto } from "./dto/reconcile-execution.dto";
 
 const executionInclude = {
   run: true,
@@ -107,6 +108,41 @@ export class ExecutionIntegrityService {
       await tx.workflowExecution.update({ where: { workflowRunId: runId }, data: {
         heartbeatAt: now, leaseUntil: new Date(now.getTime() + execution.leaseMs),
       } });
+    });
+  }
+
+  async reconcile(context: CapabilityContext, runId: string, decision: ReconcileExecutionDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const role = await this.authorize(tx, context);
+      if (role !== "OWNER" && role !== "ADMIN") throw new ForbiddenException("Reconciliation is not authorized");
+      const execution = await this.lock(tx, context.companyId, runId);
+      if (execution.state !== "FAILED" || execution.run.status !== "FAILED") {
+        throw new ConflictException("Execution is not awaiting reconciliation");
+      }
+      const incident = await tx.workflowIncident.findFirst({ where: {
+        id: decision.incidentId, companyId: context.companyId, workflowRunId: runId,
+        attemptNumber: execution.attemptCount, reconciledAt: null, resolvedAt: null,
+      } });
+      const checkpoint = execution.checkpoints.find((item) => item.workflowStepId === incident?.workflowStepId);
+      if (!incident || checkpoint?.state !== "UNKNOWN" || checkpoint.replaySafety !== "MANUAL" ||
+        !checkpoint.adapterKey || checkpoint.attemptCount === 0) {
+        throw new ConflictException("Incident is not awaiting reconciliation");
+      }
+      const now = await this.now(tx);
+      const canRetry = decision.outcome === "NOT_APPLIED";
+      if (canRetry) {
+        await tx.workflowCheckpoint.update({ where: { workflowStepId: checkpoint.workflowStepId }, data: {
+          state: "READY", approvalId: null,
+        } });
+      }
+      await tx.workflowIncident.update({ where: { id: incident.id }, data: {
+        reconciliationOutcome: decision.outcome, reconciledAt: now, resolvedAt: canRetry ? now : null,
+      } });
+      await this.audit(tx, context, runId, "RECONCILED", {
+        workflowStepId: checkpoint.workflowStepId, incidentId: incident.id, attemptNumber: incident.attemptNumber,
+        outcome: decision.outcome, evidenceReference: decision.evidenceReference, correlationId: execution.run.correlationId,
+      });
+      return { success: true };
     });
   }
 
