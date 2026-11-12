@@ -136,6 +136,8 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 .topbar-actions, .toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .operation-search { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .operation-search input { width: min(240px, 100%); }
+.operation-start { margin: 0 0 18px; }
+.operation-start input { width: min(280px, 100%); }
 .reconciliation-form { display: grid; gap: 12px; margin: 14px 0; }
 .reconciliation-form label { display: grid; gap: 6px; }
 .reconciliation-form button { justify-self: start; }
@@ -215,6 +217,7 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
 @media (max-width: 560px) {
   .operation-search, .operation-search input { width: 100%; }
+  .operation-start input { width: 100%; }
   .login-panel { padding: 24px; }
   .app-content { padding: 22px 14px; }
   .topbar h1 { font-size: 28px; }

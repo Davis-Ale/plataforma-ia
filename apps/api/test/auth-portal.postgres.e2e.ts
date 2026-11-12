@@ -372,6 +372,32 @@ describe("Portal authentication with PostgreSQL and Chrome", () => {
     expect(await browser.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   });
 
+  it("starts an operation from the portal and opens the persisted integration failure", async () => {
+    await browser.evaluate(`(() => {
+      const select = document.querySelector("select[aria-label=Empresa]");
+      select.value = ${JSON.stringify(companyB)};
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    await browser.waitFor('document.body.innerText.includes("portal.qa.2")');
+    const reference = randomUUID();
+    await browser.evaluate(`(() => {
+      const input = document.querySelector("#operation-contract");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(reference)});
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    })()`);
+    await browser.waitFor('!document.querySelector(".operation-start button").disabled');
+    await browser.evaluate('document.querySelector(".operation-start").requestSubmit()');
+    await browser.waitFor('document.querySelector(".step-error")?.textContent.includes("A integração está indisponível")');
+    expect(await browser.evaluate<boolean>('document.querySelector(".steps li")?.textContent.includes("Consultar contrato")')).toBe(true);
+    expect(await browser.evaluate<number>('document.querySelectorAll("button.run-row").length')).toBe(1);
+    const run = await prisma!.workflowRun.findFirstOrThrow({ where: {
+      companyId: companyB, workflowKey: "operations.prepare_from_contract",
+      input: { path: ["contractExternalRef"], equals: reference },
+    } });
+    expect(run).toMatchObject({ status: "FAILED", error: "INTEGRATION_UNAVAILABLE" });
+    expect(await browser.evaluate<boolean>(`document.querySelector(".run-list")?.textContent.includes(${JSON.stringify(run.operationId)})`)).toBe(true);
+  });
+
   it("shows the empty account without invented visible identities or business records", async () => {
     await prisma!.companyUser.updateMany({ where: { userId }, data: { status: "INACTIVE" } });
     await prisma!.user.update({ where: { id: userId }, data: { name: "" } });
