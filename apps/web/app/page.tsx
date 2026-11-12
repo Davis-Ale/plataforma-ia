@@ -162,6 +162,8 @@ export default function Home() {
   const [status, setStatus] = useState<WorkflowStatus | "">("");
   const [operationDraft, setOperationDraft] = useState("");
   const [operationId, setOperationId] = useState("");
+  const [contractReference, setContractReference] = useState("");
+  const [startingOperation, setStartingOperation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [workflowsLoading, setWorkflowsLoading] = useState(false);
@@ -170,6 +172,8 @@ export default function Home() {
   const workflowRequests = useRef(new RequestScope());
   const detailRequests = useRef(new RequestScope());
   const actionRequests = useRef(new RequestScope());
+  const startRequests = useRef(new RequestScope());
+  const pendingOperations = useRef(new Map<string, string>());
   const [actionLoading, setActionLoading] = useState(false);
 
   const activeCompanies = useMemo(
@@ -184,6 +188,10 @@ export default function Home() {
     workflowRequests.current.cancel();
     detailRequests.current.cancel();
     actionRequests.current.cancel();
+    startRequests.current.cancel();
+    pendingOperations.current.clear();
+    setContractReference("");
+    setStartingOperation(false);
     setActionLoading(false);
     setUser(null);
     setView("executions");
@@ -281,6 +289,7 @@ export default function Home() {
     const sessions = sessionRequests.current;
     const workflows = workflowRequests.current;
     const details = detailRequests.current;
+    const starts = startRequests.current;
     const pending = sessions.start();
     const bootstrap = async () => {
       try {
@@ -313,6 +322,7 @@ export default function Home() {
       sessions.cancel();
       workflows.cancel();
       details.cancel();
+      starts.cancel();
       actionRequests.current.cancel();
     };
   }, [loadWorkflows]);
@@ -362,6 +372,8 @@ export default function Home() {
 
   async function logout() {
     actionRequests.current.cancel();
+    startRequests.current.cancel();
+    setStartingOperation(false);
     setActionLoading(false);
     const pending = sessionRequests.current.start();
     workflowRequests.current.cancel();
@@ -390,6 +402,9 @@ export default function Home() {
   }
 
   async function changeCompany(nextCompanyId: string) {
+    startRequests.current.cancel();
+    setContractReference("");
+    setStartingOperation(false);
     setCompanyId(nextCompanyId);
     setOperationDraft("");
     setOperationId("");
@@ -408,6 +423,51 @@ export default function Home() {
     const nextOperationId = operationDraft.trim();
     setOperationId(nextOperationId);
     await loadWorkflows(companyId, status, nextOperationId);
+  }
+
+  async function startOperation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reference = contractReference.trim();
+    if (!companyId || !reference || startingOperation) return;
+    const pending = startRequests.current.start();
+    const currentCompanyId = companyId;
+    const requestKey = JSON.stringify([currentCompanyId, reference]);
+    setStartingOperation(true);
+    setMessage("");
+    try {
+      let id = pendingOperations.current.get(requestKey);
+      if (!id) {
+        id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        pendingOperations.current.set(requestKey, id);
+      }
+      const response = await fetch(`/api/operations/start?companyId=${encodeURIComponent(currentCompanyId)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: pending.signal,
+        body: JSON.stringify({ contractExternalRef: reference, operationId: id }),
+      });
+      if (!pending.isCurrent()) return;
+      if (response.status === 401) { resetSession(); return; }
+      if (!response.ok) {
+        setMessage(response.status === 403 ? "Seu acesso não permite iniciar esta operação." : "Não foi possível iniciar a operação. Tente novamente.");
+        return;
+      }
+      const result = await response.json() as { workflowRunId?: string; error?: string };
+      if (!pending.isCurrent()) return;
+      if (!result.workflowRunId) {
+        setMessage(result.error ? recoveryMessage(result.error) : "Não foi possível localizar a execução.");
+        return;
+      }
+      pendingOperations.current.delete(requestKey);
+      setContractReference("");
+      setStatus("");
+      setOperationId(id);
+      setOperationDraft(id);
+      await loadWorkflows(currentCompanyId, "", id);
+      if (pending.isCurrent()) await loadDetail(result.workflowRunId, currentCompanyId);
+    } catch {
+      if (pending.isCurrent()) setMessage("A conexão foi interrompida. Tente novamente com a mesma referência.");
+    } finally {
+      if (pending.isCurrent()) setStartingOperation(false);
+    }
   }
 
   async function executionAction(action: "inspect" | "resume" | "reconcile", decision?: {
@@ -547,6 +607,15 @@ export default function Home() {
         </div>
       </section>
 
+      <form className="toolbar-actions operation-start" aria-label="Nova operação" onSubmit={(event) => void startOperation(event)}>
+        <label htmlFor="operation-contract">Referência do contrato</label>
+        <input id="operation-contract" value={contractReference} onChange={(event) => setContractReference(event.target.value)}
+          maxLength={255} required disabled={loading || !companyId || startingOperation} />
+        <button className="primary" type="submit" disabled={loading || !companyId || !contractReference.trim() || startingOperation}>
+          {startingOperation ? "Iniciando…" : "Iniciar operação"}
+        </button>
+      </form>
+
       {message ? <div className="alert">{message}</div> : null}
 
       <div className="workspace">
@@ -685,7 +754,7 @@ export default function Home() {
                         <span>{formatDate(step.startedAt)}</span>
                         <span>{duration(step.startedAt, step.completedAt)}</span>
                       </div>
-                      {step.error ? <div className="step-error">{step.error}</div> : null}
+                      {step.error ? <div className="step-error">{selected.execution ? recoveryMessage(step.error) : step.error}</div> : null}
                     </div>
                   </li>
                 ))}
