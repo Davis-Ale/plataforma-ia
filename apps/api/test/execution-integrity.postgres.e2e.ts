@@ -9,6 +9,7 @@ import { ExecutionIntegrityService } from "../src/scenarios/execution-integrity.
 import { PrepareOperationService } from "../src/scenarios/prepare-operation.service";
 import { AuthorizationGateway } from "../src/capabilities/authorization-gateway.service";
 import { IntegrationRegistry } from "../src/integrations/integration-registry.service";
+import { IntegrationBootstrapService } from "../src/integrations/integration-bootstrap.service";
 import { IntegrationResolver } from "../src/integrations/integration-resolver.service";
 import { createDemoContractsAdapter } from "../src/integrations/demo/demo-contracts.adapter";
 import { createDemoOperationsAdapter } from "../src/integrations/demo/demo-operations.adapter";
@@ -141,6 +142,33 @@ describe("Execution integrity with isolated PostgreSQL", () => {
     await expect(integrity.checkpoint(context, run.id, run.token, run.stepId, { value: "late" })).rejects.toThrow("lease");
     await integrity.inspect(context, run.id);
     expect(await prisma.workflowIncident.count({ where: { workflowRunId: run.id } })).toBe(1);
+  });
+
+  it("persists the PNCP contract step and leaves the workflow incomplete without operations integration", async () => {
+    await app.get(IntegrationBootstrapService).enablePncpContractsForCompany(foreignId);
+    const contractExternalRef = "00000000000000-2-000001/2025";
+    const request = jest.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({
+      numeroControlePNCP: contractExternalRef,
+      objetoContrato: "Objeto da resposta de teste",
+      orgaoEntidade: { cnpj: "00000000000000", razaoSocial: "Órgão da resposta de teste" },
+      dataVigenciaInicio: "2025-04-29",
+      dataPublicacaoPncp: "2025-04-29T11:00:00",
+    }));
+    try {
+      const result = await scenario.run({ ...context, companyId: foreignId }, { contractExternalRef, operationId: randomUUID() });
+      expect(result).toMatchObject({ success: false, failedStep: "plan_operations", error: "INTEGRATION_UNAVAILABLE" });
+      const step = await prisma.workflowStep.findFirstOrThrow({ where: {
+        companyId: foreignId, workflowRunId: result.workflowRunId, stepKey: "read_contract",
+      } });
+      expect(step).toMatchObject({ status: "COMPLETED", output: {
+        companyId: foreignId, externalRef: contractExternalRef, name: "Objeto da resposta de teste",
+        clientName: "Órgão da resposta de teste", startDate: "2025-04-29", status: "PUBLISHED_IN_PNCP",
+        sourceAdapter: "pncp-contracts", simulated: false,
+      } });
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally {
+      request.mockRestore();
+    }
   });
 
   it("allows only one concurrent recovery and fences the previous owner", async () => {
